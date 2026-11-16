@@ -12,6 +12,7 @@ mod library;
 mod lyrics;
 mod mpris;
 mod queue;
+mod session;
 mod ui;
 
 fn main() -> cosmic::iced::Result {

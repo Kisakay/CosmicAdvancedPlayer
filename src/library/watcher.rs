@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use cosmic::iced::Subscription;
 use cosmic::iced::futures::SinkExt;
+use notify::event::ModifyKind;
 use notify::{EventKind, RecursiveMode, Watcher};
 
 use super::is_audio_file;
@@ -22,9 +23,13 @@ pub fn subscription(roots: Vec<PathBuf>) -> Subscription<()> {
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
             let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
                 let Ok(event) = res else { return };
+                // Reading files during a scan updates their access time: metadata
+                // changes must not trigger another scan (endless re-index loop).
                 let relevant = matches!(
                     event.kind,
-                    EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_)
+                    EventKind::Create(_)
+                        | EventKind::Remove(_)
+                        | EventKind::Modify(ModifyKind::Data(_) | ModifyKind::Name(_) | ModifyKind::Any)
                 ) && event
                     .paths
                     .iter()

@@ -50,11 +50,6 @@ pub struct Config {
     pub replay_gain: bool,
     pub gapless: bool,
 
-    // Session restore
-    pub resume_paths: Vec<String>,
-    pub resume_index: usize,
-    pub resume_position_ms: u64,
-
     // Lyrics plugins, in priority order
     pub lyrics_order: Vec<Provider>,
     pub lyrics_disabled: Vec<Provider>,
@@ -95,9 +90,6 @@ impl Default for Config {
             repeat: Repeat::Off,
             replay_gain: true,
             gapless: true,
-            resume_paths: Vec::new(),
-            resume_index: 0,
-            resume_position_ms: 0,
             lyrics_order: Provider::ALL.to_vec(),
             lyrics_disabled: Vec::new(),
             lastfm_api_key: String::new(),
@@ -125,6 +117,7 @@ impl Config {
                     Err((_errors, config)) => config,
                 };
                 config.normalize();
+                remove_legacy_keys(app_id);
                 (Some(handler), config)
             }
             Err(err) => {
@@ -174,6 +167,19 @@ impl Config {
     #[must_use]
     pub fn lastfm_connected(&self) -> bool {
         !self.lastfm_session.is_empty()
+    }
+}
+
+/// Version 0.1.0 kept the whole play queue in the settings, which made every
+/// settings change rewrite and re-parse it. The queue now lives in `session.json`.
+fn remove_legacy_keys(app_id: &str) {
+    let Some(dir) = dirs::config_dir() else { return };
+    let dir = dir
+        .join("cosmic")
+        .join(app_id)
+        .join(format!("v{}", Config::VERSION));
+    for key in ["resume_paths", "resume_index", "resume_position_ms"] {
+        let _ = std::fs::remove_file(dir.join(key));
     }
 }
 

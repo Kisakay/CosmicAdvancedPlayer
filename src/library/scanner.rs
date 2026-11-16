@@ -68,6 +68,24 @@ fn file_state(path: &Path) -> Option<(i64, i64)> {
     Some((mtime, meta.len() as i64))
 }
 
+/// Thread pool for reading tags and covers: half of the cores (or
+/// `RAYON_NUM_THREADS`), so indexing never starves the interface or the desktop.
+fn pool() -> &'static rayon::ThreadPool {
+    static POOL: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| {
+        let threads = std::env::var("RAYON_NUM_THREADS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or_else(|| std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).clamp(1, 8)));
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .thread_name(|i| format!("indexer-{i}"))
+            .build()
+            .expect("indexer thread pool")
+    })
+}
+
 /// Folder covers are looked up once per directory.
 #[derive(Default)]
 pub struct FolderCovers(Mutex<HashMap<PathBuf, Option<String>>>);
@@ -234,21 +252,23 @@ pub fn scan(
     let done = AtomicUsize::new(0);
     let folder_covers = FolderCovers::default();
     let now = db::now();
-    let tracks: Vec<Track> = changed
-        .par_iter()
-        .filter_map(|p| {
-            let t = read_track(p, &folder_covers);
-            let n = done.fetch_add(1, Ordering::Relaxed) + 1;
-            if n.is_multiple_of(16) || n == total {
-                progress(n, total);
-            }
-            t
-        })
-        .map(|mut t| {
-            t.added_at = now;
-            t
-        })
-        .collect();
+    let tracks: Vec<Track> = pool().install(|| {
+        changed
+            .par_iter()
+            .filter_map(|p| {
+                let t = read_track(p, &folder_covers);
+                let n = done.fetch_add(1, Ordering::Relaxed) + 1;
+                if n.is_multiple_of(16) || n == total {
+                    progress(n, total);
+                }
+                t
+            })
+            .map(|mut t| {
+                t.added_at = now;
+                t
+            })
+            .collect::<Vec<Track>>()
+    });
 
     let added = tracks.iter().filter(|t| !known.contains_key(&t.path)).count();
     let updated = tracks.len() - added;
@@ -283,10 +303,12 @@ pub fn read_transient(paths: &[PathBuf], first_id: i64) -> Vec<Track> {
         }
     }
     let folder_covers = FolderCovers::default();
-    let mut tracks: Vec<Track> = files
-        .par_iter()
-        .filter_map(|p| read_track(p, &folder_covers))
-        .collect();
+    let mut tracks: Vec<Track> = pool().install(|| {
+        files
+            .par_iter()
+            .filter_map(|p| read_track(p, &folder_covers))
+            .collect()
+    });
     // Album order within each folder, folders in path order.
     tracks.sort_by(|a, b| {
         (a.path.parent(), a.disc_no, a.track_no, &a.path).cmp(&(

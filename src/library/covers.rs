@@ -56,7 +56,18 @@ pub fn path(key: &str, size: Size) -> PathBuf {
 
 #[must_use]
 pub fn key_for(bytes: &[u8]) -> String {
-    let digest = Md5::digest(bytes);
+    // Hashing whole multi-megabyte pictures for every track is the slowest part of
+    // indexing: length + head + tail identify an image just as well.
+    const SPAN: usize = 64 * 1024;
+    let mut h = Md5::new();
+    h.update((bytes.len() as u64).to_le_bytes());
+    if bytes.len() <= 2 * SPAN {
+        h.update(bytes);
+    } else {
+        h.update(&bytes[..SPAN]);
+        h.update(&bytes[bytes.len() - SPAN..]);
+    }
+    let digest = h.finalize();
     digest.iter().take(10).map(|b| format!("{b:02x}")).collect()
 }
 
@@ -119,7 +130,8 @@ fn fit(img: &DynamicImage, max: u32) -> DynamicImage {
     if w <= max && h <= max {
         img.clone()
     } else {
-        img.resize(max, max, FilterType::Lanczos3)
+        // CatmullRom: visually identical to Lanczos3 at these sizes, much faster.
+        img.resize(max, max, FilterType::CatmullRom)
     }
 }
 

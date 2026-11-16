@@ -8,12 +8,17 @@ use cosmic::widget;
 
 use super::{
     Leading, ListOptions, cover, dim_text, empty_state, page_header, page_scroll, play_buttons, track_list,
+    virtual_grid,
 };
 use crate::app::{App, Message, Page};
 use crate::fl;
 use crate::library::{Album, AlbumKey, album_title, format_duration};
 
 const CARD: f32 = 176.0;
+/// Grid cells (button padding included); every card must fit in its cell.
+const ALBUM_CELL: (f32, f32) = (CARD + 12.0, 238.0);
+const ARTIST_CELL: (f32, f32) = (162.0, 204.0);
+const GENRE_CELL: (f32, f32) = (200.0, 96.0);
 
 pub fn album_card<'a>(album: &'a Album, size: f32) -> Element<'a, Message> {
     let title = album_title(&album.key.title).map_or_else(|| fl!("unknown-album"), str::to_string);
@@ -44,14 +49,11 @@ pub fn album_card<'a>(album: &'a Album, size: f32) -> Element<'a, Message> {
         .into()
 }
 
-fn card_grid<'a>(cards: Vec<Element<'a, Message>>) -> Element<'a, Message> {
-    widget::container(widget::flex_row(cards).row_spacing(12).column_spacing(12))
-        .padding([8, 18])
-        .into()
-}
-
 pub fn grid_view(app: &App) -> Element<'_, Message> {
-    card_grid(app.library.albums.iter().map(|a| album_card(a, CARD)).collect())
+    let albums = &app.library.albums;
+    virtual_grid(app, albums.len(), ALBUM_CELL, 100.0, |i| {
+        album_card(&albums[i], CARD)
+    })
 }
 
 pub fn grid(app: &App) -> Element<'_, Message> {
@@ -198,9 +200,9 @@ pub fn artist<'a>(app: &'a App, name: &str) -> Element<'a, Message> {
         widget::column::with_capacity(3)
             .push(header)
             .push(super::lists::section_title(fl!("page-albums")))
-            .push(card_grid(
-                albums.into_iter().map(|a| album_card(a, CARD)).collect(),
-            ))
+            .push(virtual_grid(app, albums.len(), ALBUM_CELL, 300.0, |i| {
+                album_card(albums[i], CARD)
+            }))
             .padding([0, 0, 24, 0]),
     )
 }
@@ -213,11 +215,10 @@ pub fn artists(app: &App) -> Element<'_, Message> {
             fl!("library-empty-body"),
         );
     }
-    let cards = app
-        .library
-        .artists
-        .iter()
-        .map(|a| {
+    let artists = &app.library.artists;
+    let card = |i: usize| -> Element<'_, Message> {
+        let a = &artists[i];
+        {
             let name = if a.name.is_empty() {
                 fl!("unknown-artist")
             } else {
@@ -244,8 +245,8 @@ pub fn artists(app: &App) -> Element<'_, Message> {
             .padding(6)
             .on_press(Message::Navigate(Page::Artist(a.name.clone())))
             .into()
-        })
-        .collect();
+        }
+    };
     let header = page_header(
         fl!("page-artists"),
         Some(fl!("artist-count", count = app.library.artists.len())),
@@ -255,7 +256,7 @@ pub fn artists(app: &App) -> Element<'_, Message> {
     page_scroll(
         widget::column::with_capacity(2)
             .push(header)
-            .push(card_grid(cards))
+            .push(virtual_grid(app, artists.len(), ARTIST_CELL, 100.0, card))
             .padding([0, 0, 24, 0]),
     )
 }
@@ -290,11 +291,10 @@ pub fn genres(app: &App) -> Element<'_, Message> {
             fl!("genres-empty-body"),
         );
     }
-    let tiles = app
-        .library
-        .genres
-        .iter()
-        .map(|g| {
+    let genres = &app.library.genres;
+    let tile = |i: usize| -> Element<'_, Message> {
+        let g = &genres[i];
+        {
             let color = genre_color(&g.name);
             widget::button::custom(
                 widget::container(
@@ -331,8 +331,8 @@ pub fn genres(app: &App) -> Element<'_, Message> {
             .padding(0)
             .on_press(Message::Navigate(Page::Genre(g.name.clone())))
             .into()
-        })
-        .collect();
+        }
+    };
     let header = page_header(
         fl!("page-genres"),
         Some(fl!("genre-count", count = app.library.genres.len())),
@@ -342,7 +342,7 @@ pub fn genres(app: &App) -> Element<'_, Message> {
     page_scroll(
         widget::column::with_capacity(2)
             .push(header)
-            .push(card_grid(tiles))
+            .push(virtual_grid(app, genres.len(), GENRE_CELL, 100.0, tile))
             .padding([0, 0, 24, 0]),
     )
 }

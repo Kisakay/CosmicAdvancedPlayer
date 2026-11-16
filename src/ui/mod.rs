@@ -40,7 +40,7 @@ pub fn scroll_to_top<T: Send + 'static>() -> Task<T> {
 pub fn page_scroll<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     widget::scrollable(content)
         .id(SCROLL_ID.clone())
-        .on_scroll(|vp| Message::Scrolled(vp.absolute_offset().y, vp.bounds().height))
+        .on_scroll(|vp| Message::Scrolled(vp.absolute_offset().y, vp.bounds().height, vp.bounds().width))
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
@@ -365,6 +365,52 @@ impl Default for ListOptions {
             top: 120.0,
         }
     }
+}
+
+/// A virtualised grid of fixed-size cells: only the rows near the viewport are
+/// built, so a library of thousands of albums costs as much as a screenful.
+/// `top` is the approximate height of the content above the grid.
+pub fn virtual_grid<'a>(
+    app: &App,
+    count: usize,
+    (cell_w, cell_h): (f32, f32),
+    top: f32,
+    mut build: impl FnMut(usize) -> Element<'a, Message>,
+) -> Element<'a, Message> {
+    const GAP: f32 = 12.0;
+    const PAD_X: f32 = 18.0;
+    let width = (app.content_width() - 2.0 * PAD_X).max(cell_w);
+    let cols = (((width + GAP) / (cell_w + GAP)).floor() as usize).max(1);
+    let rows = count.div_ceil(cols);
+    let row_h = cell_h + GAP;
+    let (offset, height) = app.scroll;
+    let first = (((offset - top) / row_h).floor().max(0.0) as usize)
+        .saturating_sub(2)
+        .min(rows);
+    let last = (first + (height / row_h).ceil() as usize + 4).min(rows);
+
+    let mut col = widget::column::with_capacity(last - first + 2).padding([8.0, PAD_X]);
+    if first > 0 {
+        col = col.push(widget::Space::new().height(Length::Fixed(first as f32 * row_h)));
+    }
+    for r in first..last {
+        let mut row = widget::row::with_capacity(cols)
+            .spacing(GAP)
+            .height(Length::Fixed(row_h));
+        for i in r * cols..((r + 1) * cols).min(count) {
+            row = row.push(
+                // No clip here: every clip is a separate render layer.
+                widget::container(build(i))
+                    .width(Length::Fixed(cell_w))
+                    .height(Length::Fixed(cell_h)),
+            );
+        }
+        col = col.push(row);
+    }
+    if last < rows {
+        col = col.push(widget::Space::new().height(Length::Fixed((rows - last) as f32 * row_h)));
+    }
+    col.into()
 }
 
 /// A virtualised list of tracks: only the visible rows are built.

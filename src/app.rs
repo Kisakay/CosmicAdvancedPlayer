@@ -214,7 +214,8 @@ pub enum Message {
     // Navigation
     Navigate(Page),
     Back,
-    Scrolled(f32, f32),
+    /// Page scroll offset, viewport height and width (list virtualisation).
+    Scrolled(f32, f32, f32),
     SortSongs(SongSort),
     // Playback
     /// Play these library tracks, starting at index.
@@ -285,6 +286,8 @@ pub enum Message {
     LaunchUrl(String),
     CloseToast(widget::ToastId),
     UpdateConfig(Config),
+    /// Writes settings changed in bursts (volume) once things calm down.
+    FlushConfig,
     Noop,
 }
 
@@ -311,6 +314,9 @@ pub struct App {
     pub page: Page,
     history: Vec<Page>,
     pub scroll: (f32, f32),
+    /// Width of the page viewport, once reported; reset when the window is resized.
+    viewport_width: Option<f32>,
+    window_size: (f32, f32),
     pub songs_sort: SongSort,
     pub songs_desc: bool,
     pub songs: Vec<i64>,
@@ -340,9 +346,14 @@ pub struct App {
     mpris: Option<mpris::Handle>,
     discord: discord::Handle,
     discord_covers: HashMap<(String, String), Option<String>>,
+    session: crate::session::Saver,
+    /// What was last handed to the session writer (queue fingerprint, index, position).
+    saved_session: Option<(u64, usize, u64)>,
     pub lastfm_auth: LastfmAuth,
     pub lastfm_pending: usize,
     pending_open: Vec<PathBuf>,
+    /// Settings changed but not written yet (debounced).
+    config_dirty: Option<std::time::Instant>,
 }
 
 impl cosmic::Application for App {
@@ -417,6 +428,8 @@ impl cosmic::Application for App {
             page: Page::Albums,
             history: Vec::new(),
             scroll: (0.0, 800.0),
+            viewport_width: None,
+            window_size: (1280.0, 820.0),
             songs_sort: SongSort::Artist,
             songs_desc: false,
             songs: Vec::new(),
@@ -442,9 +455,12 @@ impl cosmic::Application for App {
             mpris: None,
             discord,
             discord_covers: HashMap::new(),
+            session: crate::session::Saver::spawn(),
+            saved_session: None,
             lastfm_auth: LastfmAuth::Idle,
             lastfm_pending: 0,
             pending_open: flags.paths.iter().map(PathBuf::from).collect(),
+            config_dirty: None,
             config,
         };
         app.rebuild_nav();
@@ -514,6 +530,14 @@ impl cosmic::Application for App {
         Some(crate::ui::player_bar::view(self))
     }
 
+    fn on_window_resize(&mut self, _id: cosmic::iced::window::Id, width: f32, height: f32) {
+        self.window_size = (width, height);
+        self.viewport_width = None;
+        // Header and player bar take ~220 px; keeps virtualised lists filled until
+        // the page reports its real viewport.
+        self.scroll.1 = (height - 220.0).max(200.0);
+    }
+
     fn on_escape(&mut self) -> Task<cosmic::Action<Message>> {
         if self.core.window.show_context {
             self.core.window.show_context = false;
@@ -570,14 +594,15 @@ impl cosmic::Application for App {
             _ => None,
         });
 
-        let mut subs = vec![
+        let mut subs = Vec::with_capacity(5);
+        subs.extend([
             keys,
             audio::subscription().map(Message::Audio),
             mpris::subscription().map(Message::Mpris),
             self.core()
                 .watch_config::<Config>(Self::APP_ID)
                 .map(|update| Message::UpdateConfig(update.config)),
-        ];
+        ]);
         if self.config.watch_folders && self.library_loaded && !self.config.library_folders.is_empty() {
             let roots = self.config.library_folders.iter().map(PathBuf::from).collect();
             subs.push(watcher::subscription(roots).map(|()| Message::FilesChanged));
@@ -647,7 +672,10 @@ impl cosmic::Application for App {
                     return self.navigate(page, false);
                 }
             }
-            Message::Scrolled(offset, height) => self.scroll = (offset, height),
+            Message::Scrolled(offset, height, width) => {
+                self.scroll = (offset, height);
+                self.viewport_width = Some(width);
+            }
             Message::SortSongs(sort) => {
                 if self.songs_sort == sort {
                     self.songs_desc = !self.songs_desc;
@@ -740,7 +768,23 @@ impl cosmic::Application for App {
                 self.config.volume = v.clamp(0.0, 1.0);
                 self.config.muted = false;
                 self.apply_volume();
-                self.save_config();
+                // A slider drag sends dozens of these: write the settings once it stops.
+                let first = self.config_dirty.is_none();
+                self.config_dirty = Some(std::time::Instant::now());
+                if first {
+                    return flush_config_after(CONFIG_WRITE_DELAY);
+                }
+            }
+            Message::FlushConfig => {
+                if let Some(changed) = self.config_dirty {
+                    let quiet = changed.elapsed();
+                    if quiet < CONFIG_WRITE_DELAY {
+                        // Still moving: check again when it should have settled.
+                        return flush_config_after(CONFIG_WRITE_DELAY - quiet);
+                    }
+                    self.config_dirty = None;
+                    self.save_config();
+                }
             }
             Message::ToggleMute => {
                 self.config.muted = !self.config.muted;
@@ -1124,6 +1168,8 @@ impl cosmic::Application for App {
                 let _ = open::that_detached(url);
             }
             Message::CloseToast(id) => self.toasts.remove(id),
+            // Our own pending change would be overwritten by the old value on disk.
+            Message::UpdateConfig(_) if self.config_dirty.is_some() => {}
             Message::UpdateConfig(config) => {
                 if config != self.config {
                     let theme_changed = config.app_theme != self.config.app_theme;
@@ -1137,6 +1183,16 @@ impl cosmic::Application for App {
         }
         Task::none()
     }
+}
+
+/// Settings changed in bursts are written this long after the last change.
+const CONFIG_WRITE_DELAY: Duration = Duration::from_millis(1200);
+
+fn flush_config_after(delay: Duration) -> Task<cosmic::Action<Message>> {
+    cosmic::task::future(async move {
+        tokio::time::sleep(delay).await;
+        Message::FlushConfig
+    })
 }
 
 /// Keyboard shortcuts.
@@ -1352,6 +1408,20 @@ impl App {
         }
         self.scroll.0 = 0.0;
         crate::ui::scroll_to_top()
+    }
+
+    /// Width available to the page content.
+    #[must_use]
+    pub fn content_width(&self) -> f32 {
+        self.viewport_width.unwrap_or_else(|| {
+            let (w, _) = self.window_size;
+            // The sidebar (~300 px) is only shown on wide windows.
+            if self.core.nav_bar_active() && w > 900.0 {
+                w - 300.0
+            } else {
+                w
+            }
+        })
     }
 
     pub fn can_go_back(&self) -> bool {
@@ -1955,47 +2025,57 @@ impl App {
 
     // --- Session -----------------------------------------------------------------------------
 
+    fn current_session(&self) -> crate::session::Session {
+        crate::session::Session {
+            paths: self
+                .queue
+                .items()
+                .iter()
+                .map(|t| t.path.to_string_lossy().into_owned())
+                .collect(),
+            index: self.queue.position().unwrap_or(0),
+            position_ms: self.position.as_millis() as u64,
+        }
+    }
+
+    /// Hands the session to the background writer when it changed.
     fn save_session(&mut self) {
-        let paths: Vec<String> = self
-            .queue
-            .items()
-            .iter()
-            .map(|t| t.path.to_string_lossy().into_owned())
-            .collect();
-        let index = self.queue.position().unwrap_or(0);
-        let pos = self.position.as_millis() as u64;
-        if paths != self.config.resume_paths
-            || index != self.config.resume_index
-            || pos != self.config.resume_position_ms
-        {
-            self.config.resume_paths = paths;
-            self.config.resume_index = index;
-            self.config.resume_position_ms = pos;
-            self.save_config();
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for t in self.queue.items() {
+            t.path.hash(&mut h);
+        }
+        let key = (
+            h.finish(),
+            self.queue.position().unwrap_or(0),
+            self.position.as_millis() as u64,
+        );
+        if self.saved_session != Some(key) {
+            self.saved_session = Some(key);
+            self.session.save(self.current_session());
         }
     }
 
     /// Restores the previous queue (paused) on startup.
     fn restore_session(&mut self) -> Task<cosmic::Action<Message>> {
-        if self.config.resume_paths.is_empty() {
+        let Some(saved) = crate::session::load().filter(|s| !s.paths.is_empty()) else {
             return Task::none();
-        }
+        };
         let by_path: HashMap<String, Arc<Track>> = self
             .library
             .tracks()
             .iter()
             .map(|t| (t.path.to_string_lossy().into_owned(), t.clone()))
             .collect();
-        let tracks: Vec<Arc<Track>> = self
-            .config
-            .resume_paths
+        let tracks: Vec<Arc<Track>> = saved
+            .paths
             .iter()
             .filter_map(|p| by_path.get(p).cloned())
             .collect();
         if tracks.is_empty() {
             return Task::none();
         }
-        let index = self.config.resume_index.min(tracks.len() - 1);
+        let index = saved.index.min(tracks.len() - 1);
         self.queue.set(tracks, index, false);
         if self.config.shuffle {
             // The saved queue is already in play order.
@@ -2004,7 +2084,7 @@ impl App {
         let Some(track) = self.queue.current().cloned() else {
             return Task::none();
         };
-        let at = Duration::from_millis(self.config.resume_position_ms);
+        let at = Duration::from_millis(saved.position_ms);
         self.resume_at = Some(at);
         self.position = at;
         self.duration = track.duration();
@@ -2025,7 +2105,8 @@ impl App {
             MenuAction::About => self.update(Message::ToggleContextPage(ContextPage::About)),
             MenuAction::Repository => self.update(Message::LaunchUrl(REPOSITORY.to_string())),
             MenuAction::Quit => {
-                self.save_session();
+                // Synchronous: the process exits right after.
+                crate::session::write(&self.current_session());
                 self.discord.set(None);
                 std::process::exit(0);
             }
