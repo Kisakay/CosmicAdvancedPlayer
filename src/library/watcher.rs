@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Watches the library folders and asks for an incremental re-scan when files
 //! are added, removed or modified (debounced).
@@ -25,7 +25,10 @@ pub fn subscription(roots: Vec<PathBuf>) -> Subscription<()> {
                 let relevant = matches!(
                     event.kind,
                     EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_)
-                ) && event.paths.iter().any(|p| is_audio_file(p) || p.extension().is_none());
+                ) && event
+                    .paths
+                    .iter()
+                    .any(|p| is_audio_file(p) || p.extension().is_none());
                 if relevant {
                     let _ = tx.send(());
                 }

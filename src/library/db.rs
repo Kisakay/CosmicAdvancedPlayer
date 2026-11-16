@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Persistent index: SQLite database with an FTS5 full-text index for search.
 
@@ -87,7 +87,9 @@ pub struct PendingScrobble {
 
 #[must_use]
 pub fn now() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
 }
 
 /// Default database location.
@@ -111,6 +113,7 @@ impl Db {
         Self::init(Connection::open(path)?)
     }
 
+    #[cfg(test)]
     pub fn open_in_memory() -> rusqlite::Result<Self> {
         Self::init(Connection::open_in_memory()?)
     }
@@ -130,9 +133,14 @@ impl Db {
 
     /// `path -> (id, mtime, size)` for every indexed file.
     pub fn file_states(&self) -> rusqlite::Result<HashMap<PathBuf, (i64, i64, i64)>> {
-        let mut stmt = self.conn.prepare_cached("SELECT id, path, mtime, size FROM tracks")?;
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT id, path, mtime, size FROM tracks")?;
         let rows = stmt.query_map([], |r| {
-            Ok((PathBuf::from(r.get::<_, String>(1)?), (r.get(0)?, r.get(2)?, r.get(3)?)))
+            Ok((
+                PathBuf::from(r.get::<_, String>(1)?),
+                (r.get(0)?, r.get(2)?, r.get(3)?),
+            ))
         })?;
         rows.collect()
     }
@@ -237,6 +245,7 @@ impl Db {
         tx.commit()
     }
 
+    #[cfg(test)]
     pub fn remove_paths(&mut self, paths: &[PathBuf]) -> rusqlite::Result<usize> {
         let tx = self.conn.transaction()?;
         let mut n = 0;
@@ -252,7 +261,9 @@ impl Db {
 
     /// Full-text search. Every word is matched as a prefix, accents ignored.
     pub fn search(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<i64>> {
-        let Some(fts) = fts_query(query) else { return Ok(Vec::new()) };
+        let Some(fts) = fts_query(query) else {
+            return Ok(Vec::new());
+        };
         let mut stmt = self.conn.prepare_cached(
             "SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?1
              ORDER BY bm25(tracks_fts, 10.0, 6.0, 4.0, 3.0, 1.0, 0.2) LIMIT ?2",
@@ -270,12 +281,11 @@ impl Db {
     }
 
     pub fn set_favorite(&self, id: i64, favorite: bool) -> rusqlite::Result<()> {
-        self.conn.execute("UPDATE tracks SET favorite = ?2 WHERE id = ?1", params![id, favorite])?;
+        self.conn.execute(
+            "UPDATE tracks SET favorite = ?2 WHERE id = ?1",
+            params![id, favorite],
+        )?;
         Ok(())
-    }
-
-    pub fn clear(&self) -> rusqlite::Result<()> {
-        self.conn.execute_batch("DELETE FROM tracks; INSERT INTO tracks_fts(tracks_fts) VALUES('rebuild');")
     }
 
     // --- Last.fm offline queue -------------------------------------------------
@@ -284,7 +294,14 @@ impl Db {
         self.conn.execute(
             "INSERT INTO scrobbles (artist, title, album, album_artist, duration, timestamp)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![s.artist, s.title, s.album, s.album_artist, s.duration_secs as i64, s.timestamp],
+            params![
+                s.artist,
+                s.title,
+                s.album,
+                s.album_artist,
+                s.duration_secs as i64,
+                s.timestamp
+            ],
         )?;
         Ok(())
     }

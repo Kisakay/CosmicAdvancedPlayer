@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Music library: track model, in-memory views (albums, artists, folders),
 //! persistent index (SQLite + FTS5), recursive scanner and cover cache.
@@ -15,8 +15,8 @@ use std::time::Duration;
 
 /// File extensions the player can decode.
 pub const AUDIO_EXTENSIONS: &[&str] = &[
-    "flac", "mp3", "ogg", "oga", "opus", "m4a", "m4b", "mp4", "aac", "wav", "wave", "aif", "aiff",
-    "aifc", "wv", "ape", "mka", "webm", "caf", "alac",
+    "flac", "mp3", "ogg", "oga", "opus", "m4a", "m4b", "mp4", "aac", "wav", "wave", "aif", "aiff", "aifc",
+    "wv", "ape", "mka", "webm", "caf", "alac",
 ];
 
 #[must_use]
@@ -67,7 +67,11 @@ impl Track {
     /// Artist used to group albums: album artist, then track artist.
     #[must_use]
     pub fn grouping_artist(&self) -> &str {
-        if self.album_artist.is_empty() { &self.artist } else { &self.album_artist }
+        if self.album_artist.is_empty() {
+            &self.artist
+        } else {
+            &self.album_artist
+        }
     }
 
     /// Short technical description, e.g. `FLAC · 24 bit · 96 kHz`.
@@ -160,7 +164,11 @@ fn sort_key(s: &str) -> String {
 fn album_key_of(t: &Track) -> AlbumKey {
     AlbumKey {
         artist: t.grouping_artist().to_string(),
-        title: if t.album.is_empty() { UNKNOWN.to_string() } else { t.album.clone() },
+        title: if t.album.is_empty() {
+            UNKNOWN.to_string()
+        } else {
+            t.album.clone()
+        },
     }
 }
 
@@ -205,16 +213,22 @@ impl Library {
             }
         }
         let albums: Vec<Album> = albums_map.into_values().collect();
-        let album_index = albums.iter().enumerate().map(|(i, a)| (a.key.clone(), i)).collect();
+        let album_index = albums
+            .iter()
+            .enumerate()
+            .map(|(i, a)| (a.key.clone(), i))
+            .collect();
 
         let mut artists_map: BTreeMap<String, Artist> = BTreeMap::new();
         for album in &albums {
-            let artist = artists_map.entry(sort_key(&album.key.artist)).or_insert_with(|| Artist {
-                name: album.key.artist.clone(),
-                albums: Vec::new(),
-                track_count: 0,
-                cover: None,
-            });
+            let artist = artists_map
+                .entry(sort_key(&album.key.artist))
+                .or_insert_with(|| Artist {
+                    name: album.key.artist.clone(),
+                    albums: Vec::new(),
+                    track_count: 0,
+                    cover: None,
+                });
             artist.albums.push(album.key.clone());
             artist.track_count += album.tracks.len();
             if artist.cover.is_none() {
@@ -228,14 +242,24 @@ impl Library {
             for g in split_genres(&t.genre) {
                 genres_map
                     .entry(sort_key(g))
-                    .or_insert_with(|| Genre { name: g.to_string(), tracks: Vec::new() })
+                    .or_insert_with(|| Genre {
+                        name: g.to_string(),
+                        tracks: Vec::new(),
+                    })
                     .tracks
                     .push(t.id);
             }
         }
         let genres = genres_map.into_values().collect();
 
-        Self { tracks, by_id, albums, album_index, artists, genres }
+        Self {
+            tracks,
+            by_id,
+            albums,
+            album_index,
+            artists,
+            genres,
+        }
     }
 
     #[must_use]
@@ -293,7 +317,11 @@ impl Library {
             SongSort::Artist => {} // natural order
             SongSort::Title => ids.sort_by_cached_key(|t| sort_key(&t.title)),
             SongSort::Album => ids.sort_by_cached_key(|t| {
-                (sort_key(&t.album), t.disc_no.unwrap_or(0), t.track_no.unwrap_or(0))
+                (
+                    sort_key(&t.album),
+                    t.disc_no.unwrap_or(0),
+                    t.track_no.unwrap_or(0),
+                )
             }),
             SongSort::Duration => ids.sort_by_key(|t| t.duration_ms),
             SongSort::Added => ids.sort_by_key(|t| std::cmp::Reverse(t.added_at)),
@@ -311,7 +339,9 @@ impl Library {
         let mut folders: BTreeMap<PathBuf, usize> = BTreeMap::new();
         let mut files: Vec<&Arc<Track>> = Vec::new();
         for t in &self.tracks {
-            let Ok(rest) = t.path.strip_prefix(dir) else { continue };
+            let Ok(rest) = t.path.strip_prefix(dir) else {
+                continue;
+            };
             let mut comps = rest.components();
             let first = comps.next();
             if comps.next().is_none() {
@@ -321,7 +351,10 @@ impl Library {
             }
         }
         files.sort_by(|a, b| a.path.cmp(&b.path));
-        (folders.into_iter().collect(), files.into_iter().map(|t| t.id).collect())
+        (
+            folders.into_iter().collect(),
+            files.into_iter().map(|t| t.id).collect(),
+        )
     }
 
     /// All tracks under `dir` (recursively), in path order.
@@ -338,20 +371,6 @@ impl Library {
     }
 
     #[must_use]
-    pub fn recently_added(&self, limit: usize) -> Vec<i64> {
-        let mut v: Vec<&Arc<Track>> = self.tracks.iter().collect();
-        v.sort_by_key(|t| std::cmp::Reverse(t.added_at));
-        v.into_iter().take(limit).map(|t| t.id).collect()
-    }
-
-    #[must_use]
-    pub fn most_played(&self, limit: usize) -> Vec<i64> {
-        let mut v: Vec<&Arc<Track>> = self.tracks.iter().filter(|t| t.play_count > 0).collect();
-        v.sort_by_key(|t| (std::cmp::Reverse(t.play_count), std::cmp::Reverse(t.last_played)));
-        v.into_iter().take(limit).map(|t| t.id).collect()
-    }
-
-    #[must_use]
     pub fn total_duration(&self) -> Duration {
         Duration::from_millis(self.tracks.iter().map(|t| t.duration_ms).sum())
     }
@@ -365,7 +384,9 @@ pub fn album_title(title: &str) -> Option<&str> {
 
 /// Splits multi-valued genre strings (`Rock; Pop`, `Rock/Pop`).
 pub fn split_genres(s: &str) -> impl Iterator<Item = &str> {
-    s.split([';', '/', ',', '\u{0}']).map(str::trim).filter(|g| !g.is_empty())
+    s.split([';', '/', ',', '\u{0}'])
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
 }
 
 /// `3:07` or `1:02:03`.
@@ -373,12 +394,33 @@ pub fn split_genres(s: &str) -> impl Iterator<Item = &str> {
 pub fn format_duration(d: Duration) -> String {
     let secs = d.as_secs();
     let (h, m, s) = (secs / 3600, (secs / 60) % 60, secs % 60);
-    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
+/// `12 min` or `3 h 05 min` (library totals).
+#[must_use]
+pub fn format_total(d: Duration) -> String {
+    let mins = d.as_secs() / 60;
+    if mins >= 60 {
+        format!("{} h {:02} min", mins / 60, mins % 60)
+    } else {
+        format!("{mins} min")
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn formats_totals() {
+        assert_eq!(format_total(Duration::from_secs(190)), "3 min");
+        assert_eq!(format_total(Duration::from_secs(3 * 3600 + 5 * 60)), "3 h 05 min");
+    }
 
     fn track(id: i64, artist: &str, album: &str, n: u32) -> Track {
         Track {
@@ -404,7 +446,12 @@ mod tests {
         ]);
         assert_eq!(lib.albums.len(), 3);
         assert_eq!(lib.artists.len(), 3);
-        let two = lib.album(&AlbumKey { artist: "B".into(), title: "Two".into() }).unwrap();
+        let two = lib
+            .album(&AlbumKey {
+                artist: "B".into(),
+                title: "Two".into(),
+            })
+            .unwrap();
         assert_eq!(two.tracks, vec![3, 1]);
         assert_eq!(two.duration_ms, 120_000);
         // "The C" sorts as "c", after "b".

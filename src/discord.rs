@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Discord Rich Presence over the local IPC socket.
 //!
@@ -40,7 +40,10 @@ pub struct Handle(mpsc::Sender<Command>);
 
 impl Handle {
     pub fn configure(&self, enabled: bool, client_id: &str) {
-        let _ = self.0.send(Command::Configure { enabled, client_id: client_id.trim().to_string() });
+        let _ = self.0.send(Command::Configure {
+            enabled,
+            client_id: client_id.trim().to_string(),
+        });
     }
 
     pub fn set(&self, presence: Option<Presence>) {
@@ -60,7 +63,9 @@ pub fn spawn() -> Handle {
 }
 
 fn unix_now() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -82,7 +87,14 @@ fn lastfm_track_url(p: &Presence) -> String {
 
 fn publish(client: &mut DiscordIpcClient, p: &Presence) -> Result<(), discord_rich_presence::error::Error> {
     let title = truncate(&p.title, 128);
-    let artist = truncate(if p.artist.is_empty() { "Unknown artist" } else { &p.artist }, 128);
+    let artist = truncate(
+        if p.artist.is_empty() {
+            "Unknown artist"
+        } else {
+            &p.artist
+        },
+        128,
+    );
     let album = truncate(if p.album.is_empty() { &p.title } else { &p.album }, 128);
     let url = lastfm_track_url(p);
 
@@ -102,7 +114,11 @@ fn publish(client: &mut DiscordIpcClient, p: &Presence) -> Result<(), discord_ri
         .buttons(vec![Button::new("Last.fm", &url)]);
     if !p.paused && !p.duration.is_zero() {
         let start = unix_now() - p.position.as_secs() as i64;
-        activity = activity.timestamps(Timestamps::new().start(start).end(start + p.duration.as_secs() as i64));
+        activity = activity.timestamps(
+            Timestamps::new()
+                .start(start)
+                .end(start + p.duration.as_secs() as i64),
+        );
     }
     client.set_activity(activity)
 }
@@ -117,7 +133,10 @@ fn run(rx: &mpsc::Receiver<Command>) {
 
     loop {
         match rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(Command::Configure { enabled: e, client_id: id }) => {
+            Ok(Command::Configure {
+                enabled: e,
+                client_id: id,
+            }) => {
                 if e != enabled || id != client_id {
                     if let Some(mut c) = client.take() {
                         let _ = c.clear_activity();
@@ -147,7 +166,10 @@ fn run(rx: &mpsc::Receiver<Command>) {
                         dirty = true;
                     }
                 }
-                Command::Configure { enabled: e, client_id: id } => {
+                Command::Configure {
+                    enabled: e,
+                    client_id: id,
+                } => {
                     enabled = e;
                     client_id = id;
                     client = None;
@@ -192,7 +214,15 @@ pub async fn itunes_cover(client: &reqwest::Client, artist: &str, album: &str) -
         "https://itunes.apple.com/search?media=music&entity=album&limit=5&term={}",
         urlencoding::encode(term.trim())
     );
-    let v: Value = client.get(&url).timeout(Duration::from_secs(10)).send().await.ok()?.json().await.ok()?;
+    let v: Value = client
+        .get(&url)
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
     let results = v.get("results")?.as_array()?;
     let album_lower = album.to_lowercase();
     let best = results
@@ -228,6 +258,9 @@ mod tests {
             duration: Duration::ZERO,
             paused: false,
         };
-        assert_eq!(lastfm_track_url(&p), "https://www.last.fm/music/Daft+Punk/_/Get+Lucky");
+        assert_eq!(
+            lastfm_track_url(&p),
+            "https://www.last.fm/music/Daft+Punk/_/Get+Lucky"
+        );
     }
 }

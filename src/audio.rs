@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Playback engine.
 //!
@@ -22,9 +22,19 @@ const TICK: Duration = Duration::from_millis(200);
 #[derive(Debug, Clone)]
 pub enum Command {
     /// Starts playing `path` (replaces whatever is playing).
-    Load { id: i64, path: PathBuf, gain: f32, paused: bool, start_at: Duration },
+    Load {
+        id: i64,
+        path: PathBuf,
+        gain: f32,
+        paused: bool,
+        start_at: Duration,
+    },
     /// Queues `path` right after the current track (gapless).
-    Preload { id: i64, path: PathBuf, gain: f32 },
+    Preload {
+        id: i64,
+        path: PathBuf,
+        gain: f32,
+    },
     /// Forgets a preloaded track (the queue changed).
     CancelPreload,
     Play,
@@ -39,14 +49,22 @@ pub enum Command {
 pub enum Event {
     Ready(Handle),
     /// A track started (after `Load`).
-    Started { id: i64, duration: Option<Duration> },
+    Started {
+        id: i64,
+        duration: Option<Duration>,
+    },
     /// The preloaded track took over without a gap.
-    Advanced { id: i64 },
+    Advanced {
+        id: i64,
+    },
     Position(Duration),
     /// Nothing left to play.
     Ended,
     /// The track could not be decoded.
-    Failed { id: i64, error: String },
+    Failed {
+        id: i64,
+        error: String,
+    },
     /// The audio device could not be opened.
     DeviceError(String),
 }
@@ -96,6 +114,8 @@ struct Engine {
     next: Option<i64>,
     next_cancelled: bool,
     volume: f32,
+    /// What is loaded, to reopen it when the decoder cannot seek.
+    source: Option<(PathBuf, f32)>,
 }
 
 impl Engine {
@@ -128,8 +148,15 @@ impl Engine {
 
     fn handle(&mut self, command: Command) {
         match command {
-            Command::Load { id, path, gain, paused, start_at } => {
+            Command::Load {
+                id,
+                path,
+                gain,
+                paused,
+                start_at,
+            } => {
                 self.reset();
+                self.source = Some((path.clone(), gain));
                 let decoder = match open(&path) {
                     Ok(d) => d,
                     Err(error) => return self.emit(Event::Failed { id, error }),
@@ -183,11 +210,24 @@ impl Engine {
             }
             Command::Stop => self.reset(),
             Command::Seek(pos) => {
-                if let Some(p) = &self.player {
-                    if let Err(err) = p.try_seek(pos) {
-                        eprintln!("seek failed: {err}");
+                let Some(p) = &self.player else { return };
+                match p.try_seek(pos) {
+                    Ok(()) => self.emit(Event::Position(p.get_pos())),
+                    Err(err) => {
+                        // Some decoders (Vorbis…) refuse to seek backwards: reopen the
+                        // file and start again from the requested position.
+                        eprintln!("seek failed ({err}), reopening the track");
+                        let paused = p.is_paused();
+                        if let (Some(id), Some((path, gain))) = (self.current, self.source.clone()) {
+                            self.handle(Command::Load {
+                                id,
+                                path,
+                                gain,
+                                paused,
+                                start_at: pos,
+                            });
+                        }
                     }
-                    self.emit(Event::Position(p.get_pos()));
                 }
             }
             Command::Volume(v) => {
@@ -237,6 +277,7 @@ fn run(commands: mpsc::Receiver<Command>, events: tokio::sync::mpsc::UnboundedSe
         next: None,
         next_cancelled: false,
         volume: 1.0,
+        source: None,
     };
     loop {
         match commands.recv_timeout(TICK) {

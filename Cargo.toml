@@ -3,7 +3,7 @@ name = "cosmic-advanced-player"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.90"
-license = "MIT"
+license = "GPL-3.0-only"
 description = "A beautiful native music player for Linux, built with Rust and libcosmic"
 repository = "https://github.com/Kisakay/CosmicAdvancedPlayer"
 homepage = "https://github.com/Kisakay/CosmicAdvancedPlayer"
@@ -59,3 +59,45 @@ opt-level = 3
 # Decoding in debug builds is painfully slow without this.
 [profile.dev.package."*"]
 opt-level = 2
+
+# Distribution packages: `cargo deb` (Debian/Ubuntu) and `cargo generate-rpm` (Fedora/openSUSE),
+# built by .github/workflows/release.yml. Graphics libraries are loaded at runtime (dlopen).
+[package.metadata.deb]
+name = "cosmic-advanced-player"
+maintainer = "Kisakay"
+copyright = "2026, Kisakay"
+license-file = ["LICENSE", "0"]
+extended-description = """\
+Cosmic Advanced Player is a native music player built with Rust and the COSMIC \
+toolkit. It indexes your music folders recursively, reads embedded cover art, \
+shows time-synced lyrics (LRCLIB, lyrics.ovh, .lrc files), scrobbles to Last.fm, \
+shares what you listen to on Discord and integrates with MPRIS."""
+depends = "$auto, libasound2 | libasound2t64, libxkbcommon0, libwayland-client0, fontconfig, libvulkan1"
+section = "sound"
+priority = "optional"
+assets = [
+    ["target/release/cosmic-advanced-player", "usr/bin/", "755"],
+    ["resources/io.github.kisakay.CosmicAdvancedPlayer.desktop", "usr/share/applications/", "644"],
+    ["resources/io.github.kisakay.CosmicAdvancedPlayer.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["resources/icons/hicolor/scalable/apps/io.github.kisakay.CosmicAdvancedPlayer.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["README.md", "usr/share/doc/cosmic-advanced-player/", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "cosmic-advanced-player"
+license = "GPL-3.0-only"
+summary = "A beautiful native music player for Linux"
+assets = [
+    { source = "target/release/cosmic-advanced-player", dest = "/usr/bin/cosmic-advanced-player", mode = "755" },
+    { source = "resources/io.github.kisakay.CosmicAdvancedPlayer.desktop", dest = "/usr/share/applications/io.github.kisakay.CosmicAdvancedPlayer.desktop", mode = "644" },
+    { source = "resources/io.github.kisakay.CosmicAdvancedPlayer.metainfo.xml", dest = "/usr/share/metainfo/io.github.kisakay.CosmicAdvancedPlayer.metainfo.xml", mode = "644" },
+    { source = "resources/icons/hicolor/scalable/apps/io.github.kisakay.CosmicAdvancedPlayer.svg", dest = "/usr/share/icons/hicolor/scalable/apps/io.github.kisakay.CosmicAdvancedPlayer.svg", mode = "644" },
+    { source = "LICENSE", dest = "/usr/share/licenses/cosmic-advanced-player/LICENSE", doc = true, mode = "644" },
+]
+auto-req = "auto"
+
+[package.metadata.generate-rpm.requires]
+alsa-lib = "*"
+libxkbcommon = "*"
+fontconfig = "*"
+vulkan-loader = "*"

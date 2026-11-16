@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Play queue: ordering, shuffle and repeat logic (UI independent).
 
@@ -252,7 +252,14 @@ mod tests {
     use super::*;
 
     fn tracks(n: i64) -> Vec<Arc<Track>> {
-        (1..=n).map(|id| Arc::new(Track { id, ..Track::default() })).collect()
+        (1..=n)
+            .map(|id| {
+                Arc::new(Track {
+                    id,
+                    ..Track::default()
+                })
+            })
+            .collect()
     }
 
     fn ids(q: &Queue) -> Vec<i64> {
@@ -293,7 +300,10 @@ mod tests {
     fn play_next_remove_and_move() {
         let mut q = Queue::default();
         q.set(tracks(3), 0, false);
-        q.play_next(&[Arc::new(Track { id: 9, ..Track::default() })]);
+        q.play_next(&[Arc::new(Track {
+            id: 9,
+            ..Track::default()
+        })]);
         assert_eq!(ids(&q), vec![1, 9, 2, 3]);
         assert!(!q.remove(2));
         assert_eq!(ids(&q), vec![1, 9, 3]);

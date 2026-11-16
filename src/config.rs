@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Persistent settings (stored with `cosmic-config`).
 
@@ -19,7 +19,6 @@ pub enum AppTheme {
 impl AppTheme {
     pub const ALL: [Self; 3] = [Self::System, Self::Dark, Self::Light];
 
-    #[must_use]
     pub fn theme(self) -> cosmic::Theme {
         match self {
             Self::System => cosmic::theme::system_preference(),
@@ -84,7 +83,10 @@ impl Default for Config {
     fn default() -> Self {
         let music = dirs::audio_dir().filter(|d| d.is_dir());
         Self {
-            library_folders: music.map(|d| d.to_string_lossy().into_owned()).into_iter().collect(),
+            library_folders: music
+                .map(|d| d.to_string_lossy().into_owned())
+                .into_iter()
+                .collect(),
             watch_folders: true,
             app_theme: AppTheme::System,
             volume: 0.8,
@@ -151,7 +153,11 @@ impl Config {
     /// Enabled lyrics providers, in priority order.
     #[must_use]
     pub fn lyrics_providers(&self) -> Vec<Provider> {
-        self.lyrics_order.iter().copied().filter(|p| !self.lyrics_disabled.contains(p)).collect()
+        self.lyrics_order
+            .iter()
+            .copied()
+            .filter(|p| !self.lyrics_disabled.contains(p))
+            .collect()
     }
 
     #[must_use]

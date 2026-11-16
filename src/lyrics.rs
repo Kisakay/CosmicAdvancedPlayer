@@ -1,10 +1,11 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Lyrics: LRC parsing and a small plugin system of providers.
 //!
 //! Providers are tried in the order chosen by the user. A time-synced result
 //! wins immediately; otherwise the first plain-text result is kept.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -67,7 +68,10 @@ impl Lyrics {
                 }
             } else {
                 for t in times {
-                    timed.push(Line { time: Some(t), text: text.clone() });
+                    timed.push(Line {
+                        time: Some(t),
+                        text: text.clone(),
+                    });
                 }
             }
         }
@@ -81,7 +85,11 @@ impl Lyrics {
                     });
                 }
             }
-            return Some(Self { lines: timed, synced: true, provider });
+            return Some(Self {
+                lines: timed,
+                synced: true,
+                provider,
+            });
         }
         // Trim leading / trailing blank lines.
         while plain.first().is_some_and(|l| l.text.is_empty()) {
@@ -90,7 +98,11 @@ impl Lyrics {
         while plain.last().is_some_and(|l| l.text.is_empty()) {
             plain.pop();
         }
-        (!plain.is_empty()).then_some(Self { lines: plain, synced: false, provider })
+        (!plain.is_empty()).then_some(Self {
+            lines: plain,
+            synced: false,
+            provider,
+        })
     }
 
     /// Index of the line being sung at `pos`.
@@ -111,7 +123,13 @@ impl Lyrics {
             .map(|l| match l.time {
                 Some(t) => {
                     let cs = t.as_millis() / 10;
-                    format!("[{:02}:{:02}.{:02}]{}", cs / 6000, (cs / 100) % 60, cs % 100, l.text)
+                    format!(
+                        "[{:02}:{:02}.{:02}]{}",
+                        cs / 6000,
+                        (cs / 100) % 60,
+                        cs % 100,
+                        l.text
+                    )
                 }
                 None => l.text.clone(),
             })
@@ -189,15 +207,6 @@ impl Provider {
     pub fn is_online(self) -> bool {
         matches!(self, Self::Lrclib | Self::LyricsOvh)
     }
-
-    #[must_use]
-    pub fn url(self) -> Option<&'static str> {
-        match self {
-            Self::Lrclib => Some("https://lrclib.net"),
-            Self::LyricsOvh => Some("https://lyrics.ovh"),
-            _ => None,
-        }
-    }
 }
 
 /// What we know about the track we want lyrics for.
@@ -243,9 +252,12 @@ pub fn clean_title(title: &str) -> String {
     for open in ['(', '['] {
         if let Some(i) = t.find(open) {
             let inner = t[i..].to_lowercase();
-            if ["feat", "ft.", "with ", "remaster", "live", "version", "edit", "mix", "mono", "stereo", "explicit"]
-                .iter()
-                .any(|k| inner.contains(k))
+            if [
+                "feat", "ft.", "with ", "remaster", "live", "version", "edit", "mix", "mono", "stereo",
+                "explicit",
+            ]
+            .iter()
+            .any(|k| inner.contains(k))
             {
                 t.truncate(i);
             }
@@ -253,7 +265,10 @@ pub fn clean_title(title: &str) -> String {
     }
     if let Some(i) = t.find(" - ") {
         let tail = t[i..].to_lowercase();
-        if ["remaster", "live", "version", "edit", "mix", "mono", "stereo"].iter().any(|k| tail.contains(k)) {
+        if ["remaster", "live", "version", "edit", "mix", "mono", "stereo"]
+            .iter()
+            .any(|k| tail.contains(k))
+        {
             t.truncate(i);
         }
     }
@@ -274,7 +289,12 @@ pub fn main_artist(artist: &str) -> String {
 }
 
 /// Looks for lyrics with the given providers, in order.
-pub async fn fetch(client: &reqwest::Client, query: &Query, providers: &[Provider], use_cache: bool) -> Option<Lyrics> {
+pub async fn fetch(
+    client: &reqwest::Client,
+    query: &Query,
+    providers: &[Provider],
+    use_cache: bool,
+) -> Option<Lyrics> {
     let cache = query.cache_file();
     if use_cache
         && let Ok(bytes) = tokio::fs::read(&cache).await
@@ -285,33 +305,60 @@ pub async fn fetch(client: &reqwest::Client, query: &Query, providers: &[Provide
         return Some(l);
     }
 
-    let mut fallback: Option<Lyrics> = None;
-    for provider in providers {
-        let result = match provider {
+    // Local sources are instant: read them first.
+    let mut results: HashMap<Provider, Option<Lyrics>> = HashMap::new();
+    for p in providers.iter().filter(|p| !p.is_online()) {
+        let r = match p {
             Provider::LocalFile => local_file(&query.path).await,
-            Provider::Embedded => embedded(query.path.clone()).await,
-            Provider::Lrclib => lrclib(client, query).await,
-            Provider::LyricsOvh => lyrics_ovh(client, query).await,
+            _ => embedded(query.path.clone()).await,
         };
-        match result {
-            Some(l) if l.synced => {
-                store(&cache, &l, *provider).await;
-                return Some(l);
-            }
-            Some(l) if fallback.is_none() => fallback = Some(l),
-            _ => {}
-        }
+        results.insert(*p, r);
     }
-    if let Some(l) = &fallback {
+    // Skip the network when a local synced result already wins.
+    let local_wins = providers.iter().take_while(|p| !p.is_online()).any(|p| {
+        results
+            .get(p)
+            .is_some_and(|r| r.as_ref().is_some_and(|l| l.synced))
+    });
+    if !local_wins {
+        // Online providers are queried concurrently; priority is applied afterwards.
+        let online: Vec<Provider> = providers.iter().copied().filter(|p| p.is_online()).collect();
+        let fetched = futures::future::join_all(online.iter().map(|p| async move {
+            match p {
+                Provider::Lrclib => lrclib(client, query).await,
+                _ => lyrics_ovh(client, query).await,
+            }
+        }))
+        .await;
+        results.extend(online.into_iter().zip(fetched));
+    }
+
+    let mut ordered = providers.iter().filter_map(|p| results.remove(p).flatten());
+    let mut fallback: Option<Lyrics> = None;
+    let best = loop {
+        match ordered.next() {
+            Some(l) if l.synced => break Some(l),
+            Some(l) => {
+                if fallback.is_none() {
+                    fallback = Some(l);
+                }
+            }
+            None => break fallback,
+        }
+    };
+    if let Some(l) = &best {
         store(&cache, l, l.provider).await;
     }
-    fallback
+    best
 }
 
 async fn store(cache: &Path, lyrics: &Lyrics, provider: Provider) {
     // Local sources are always re-read (the user may edit them).
     if provider.is_online()
-        && let Ok(json) = serde_json::to_vec(&CacheEntry { provider, text: lyrics.to_text() })
+        && let Ok(json) = serde_json::to_vec(&CacheEntry {
+            provider,
+            text: lyrics.to_text(),
+        })
     {
         let _ = tokio::fs::write(cache, json).await;
     }
@@ -369,7 +416,11 @@ impl LrclibRecord {
         self.synced_lyrics
             .as_deref()
             .and_then(|s| Lyrics::parse(s, Provider::Lrclib))
-            .or_else(|| self.plain_lyrics.as_deref().and_then(|s| Lyrics::parse(s, Provider::Lrclib)))
+            .or_else(|| {
+                self.plain_lyrics
+                    .as_deref()
+                    .and_then(|s| Lyrics::parse(s, Provider::Lrclib))
+            })
     }
 }
 
@@ -461,7 +512,12 @@ async fn lyrics_ovh_for(client: &reqwest::Client, q: &Query, artist: &str) -> Op
         urlencoding::encode(artist),
         urlencoding::encode(&title)
     );
-    let resp = client.get(&url).timeout(Duration::from_secs(12)).send().await.ok()?;
+    let resp = client
+        .get(&url)
+        .timeout(Duration::from_secs(12))
+        .send()
+        .await
+        .ok()?;
     if !resp.status().is_success() {
         return None;
     }
@@ -522,7 +578,10 @@ mod tests {
         assert_eq!(clean_title("Love (Is All)"), "Love (Is All)");
         assert_eq!(main_artist("A, B & C"), "A");
         assert_eq!(main_artist("Daft Punk feat. Pharrell"), "Daft Punk");
-        assert_eq!(artist_variants("Simon & Garfunkel"), vec!["Simon & Garfunkel", "Simon"]);
+        assert_eq!(
+            artist_variants("Simon & Garfunkel"),
+            vec!["Simon & Garfunkel", "Simon"]
+        );
         assert_eq!(artist_variants("Solo"), vec!["Solo"]);
     }
 }

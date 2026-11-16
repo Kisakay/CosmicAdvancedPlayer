@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Cover art cache.
 //!
@@ -126,7 +126,9 @@ fn fit(img: &DynamicImage, max: u32) -> DynamicImage {
 fn write_jpeg(img: &DynamicImage, out: &Path, quality: u8) -> Option<()> {
     let mut buf = Vec::new();
     let rgb = img.to_rgb8();
-    JpegEncoder::new_with_quality(Cursor::new(&mut buf), quality).encode_image(&rgb).ok()?;
+    JpegEncoder::new_with_quality(Cursor::new(&mut buf), quality)
+        .encode_image(&rgb)
+        .ok()?;
     // Write atomically: several scanner threads may store the same album cover.
     let tmp = out.with_extension(format!("tmp{}", std::process::id() ^ thread_tag()));
     std::fs::write(&tmp, &buf).ok()?;
@@ -140,7 +142,15 @@ fn thread_tag() -> u32 {
     h.finish() as u32
 }
 
-const FOLDER_NAMES: &[&str] = &["cover", "folder", "front", "album", "albumart", "albumartsmall", "thumb"];
+const FOLDER_NAMES: &[&str] = &[
+    "cover",
+    "folder",
+    "front",
+    "album",
+    "albumart",
+    "albumartsmall",
+    "thumb",
+];
 const IMAGE_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
 
 /// Finds a cover image next to the music files (`cover.jpg`, `Folder.png`…).
@@ -149,11 +159,17 @@ pub fn find_folder_image(dir: &Path) -> Option<PathBuf> {
     let mut best: Option<(usize, PathBuf)> = None;
     for entry in std::fs::read_dir(dir).ok()?.flatten() {
         let p = entry.path();
-        let Some(ext) = p.extension().and_then(|e| e.to_str()) else { continue };
+        let Some(ext) = p.extension().and_then(|e| e.to_str()) else {
+            continue;
+        };
         if !IMAGE_EXTS.iter().any(|x| x.eq_ignore_ascii_case(ext)) {
             continue;
         }
-        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
+        let stem = p
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default()
+            .to_lowercase();
         let rank = FOLDER_NAMES
             .iter()
             .position(|n| stem == *n || stem.starts_with(&format!("{n}_")) || stem.starts_with(n))

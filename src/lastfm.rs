@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Last.fm Scrobbling 2.0 API client.
 //!
@@ -99,16 +99,27 @@ async fn call(
     }
     params.insert("format".into(), "json".into());
 
-    let req = if post { client.post(API).form(&params) } else { client.get(API).query(&params) };
+    let req = if post {
+        client.post(API).form(&params)
+    } else {
+        client.get(API).query(&params)
+    };
     let resp = req
         .timeout(Duration::from_secs(15))
         .send()
         .await
         .map_err(|e| Error::Retry(e.to_string()))?;
     let status = resp.status();
-    let body: Value = resp.json().await.map_err(|e| Error::Retry(format!("{status}: {e}")))?;
+    let body: Value = resp
+        .json()
+        .await
+        .map_err(|e| Error::Retry(format!("{status}: {e}")))?;
     if let Some(code) = body.get("error").and_then(Value::as_i64) {
-        let message = body.get("message").and_then(Value::as_str).unwrap_or("Last.fm error").to_string();
+        let message = body
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("Last.fm error")
+            .to_string();
         return Err(match code {
             9 | 4 | 14 | 15 => Error::InvalidSession,
             8 | 11 | 16 | 29 => Error::Retry(message),
@@ -124,16 +135,30 @@ async fn call(
 /// Step 1: get a request token the user has to approve.
 pub async fn get_token(client: &reqwest::Client, creds: &Credentials) -> Result<String> {
     let v = call(client, creds, "auth.getToken", BTreeMap::new(), true, false).await?;
-    v.get("token").and_then(Value::as_str).map(str::to_string).ok_or_else(|| Error::Api("no token".into()))
+    v.get("token")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| Error::Api("no token".into()))
 }
 
 /// Step 2: exchange the approved token for `(username, session key)`.
-pub async fn get_session(client: &reqwest::Client, creds: &Credentials, token: &str) -> Result<(String, String)> {
+pub async fn get_session(
+    client: &reqwest::Client,
+    creds: &Credentials,
+    token: &str,
+) -> Result<(String, String)> {
     let params = BTreeMap::from([("token".to_string(), token.to_string())]);
     let v = call(client, creds, "auth.getSession", params, true, false).await?;
     let session = v.get("session").ok_or_else(|| Error::Api("no session".into()))?;
-    let name = session.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
-    let key = session.get("key").and_then(Value::as_str).ok_or_else(|| Error::Api("no key".into()))?;
+    let name = session
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let key = session
+        .get("key")
+        .and_then(Value::as_str)
+        .ok_or_else(|| Error::Api("no key".into()))?;
     Ok((name, key.to_string()))
 }
 
@@ -151,10 +176,17 @@ fn track_params(t: &TrackInfo, suffix: &str, params: &mut BTreeMap<String, Strin
     }
 }
 
-pub async fn now_playing(client: &reqwest::Client, creds: &Credentials, sk: &str, t: &TrackInfo) -> Result<()> {
+pub async fn now_playing(
+    client: &reqwest::Client,
+    creds: &Credentials,
+    sk: &str,
+    t: &TrackInfo,
+) -> Result<()> {
     let mut params = BTreeMap::from([("sk".to_string(), sk.to_string())]);
     track_params(t, "", &mut params);
-    call(client, creds, "track.updateNowPlaying", params, true, true).await.map(|_| ())
+    call(client, creds, "track.updateNowPlaying", params, true, true)
+        .await
+        .map(|_| ())
 }
 
 /// Sends up to 50 scrobbles; returns the ids that Last.fm accepted or ignored for good.
@@ -181,7 +213,14 @@ pub async fn scrobble(
     Ok(batch.iter().take(50).map(|s| s.id).collect())
 }
 
-pub async fn love(client: &reqwest::Client, creds: &Credentials, sk: &str, artist: &str, title: &str, loved: bool) -> Result<()> {
+pub async fn love(
+    client: &reqwest::Client,
+    creds: &Credentials,
+    sk: &str,
+    artist: &str,
+    title: &str,
+    loved: bool,
+) -> Result<()> {
     let params = BTreeMap::from([
         ("sk".to_string(), sk.to_string()),
         ("artist".to_string(), artist.to_string()),
@@ -192,7 +231,12 @@ pub async fn love(client: &reqwest::Client, creds: &Credentials, sk: &str, artis
 }
 
 /// Public URL of an album cover (used for the Discord presence).
-pub async fn album_art_url(client: &reqwest::Client, creds: &Credentials, artist: &str, album: &str) -> Option<String> {
+pub async fn album_art_url(
+    client: &reqwest::Client,
+    creds: &Credentials,
+    artist: &str,
+    album: &str,
+) -> Option<String> {
     if album.is_empty() {
         return None;
     }
@@ -201,7 +245,9 @@ pub async fn album_art_url(client: &reqwest::Client, creds: &Credentials, artist
         ("album".to_string(), album.to_string()),
         ("autocorrect".to_string(), "1".to_string()),
     ]);
-    let v = call(client, creds, "album.getInfo", params, false, false).await.ok()?;
+    let v = call(client, creds, "album.getInfo", params, false, false)
+        .await
+        .ok()?;
     v.pointer("/album/image")?
         .as_array()?
         .iter()
@@ -234,7 +280,13 @@ mod tests {
     #[test]
     fn threshold_rules() {
         assert_eq!(scrobble_threshold(Duration::from_secs(20)), None);
-        assert_eq!(scrobble_threshold(Duration::from_secs(180)), Some(Duration::from_secs(90)));
-        assert_eq!(scrobble_threshold(Duration::from_secs(1200)), Some(Duration::from_secs(240)));
+        assert_eq!(
+            scrobble_threshold(Duration::from_secs(180)),
+            Some(Duration::from_secs(90))
+        );
+        assert_eq!(
+            scrobble_threshold(Duration::from_secs(1200)),
+            Some(Duration::from_secs(240))
+        );
     }
 }

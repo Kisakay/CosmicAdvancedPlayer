@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! MPRIS2 D-Bus interface: media keys, the COSMIC panel media applet,
 //! `playerctl`, KDE Connect…
@@ -9,8 +9,8 @@ use cosmic::iced::Subscription;
 use cosmic::iced::futures::SinkExt;
 use mpris_server::zbus::{Result, fdo};
 use mpris_server::{
-    LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, Property, RootInterface,
-    Server, Signal, Time, TrackId, Volume,
+    LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, Property, RootInterface, Server,
+    Signal, Time, TrackId, Volume,
 };
 use tokio::sync::mpsc;
 
@@ -102,7 +102,10 @@ impl Handle {
 
 #[must_use]
 pub fn track_id(id: i64) -> TrackId {
-    let path = format!("/io/github/kisakay/CosmicAdvancedPlayer/track/{}", id.unsigned_abs());
+    let path = format!(
+        "/io/github/kisakay/CosmicAdvancedPlayer/track/{}",
+        id.unsigned_abs()
+    );
     TrackId::try_from(path).unwrap_or(TrackId::NO_TRACK)
 }
 
@@ -117,7 +120,9 @@ impl Imp {
     }
 
     fn act(&self, action: Action) -> fdo::Result<()> {
-        self.actions.send(action).map_err(|e| fdo::Error::Failed(e.to_string()))
+        self.actions
+            .send(action)
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 }
 
@@ -156,10 +161,18 @@ impl RootInterface for Imp {
         Ok(vec!["file".into()])
     }
     async fn supported_mime_types(&self) -> fdo::Result<Vec<String>> {
-        Ok(["audio/flac", "audio/mpeg", "audio/ogg", "audio/opus", "audio/wav", "audio/mp4", "audio/aac"]
-            .into_iter()
-            .map(String::from)
-            .collect())
+        Ok([
+            "audio/flac",
+            "audio/mpeg",
+            "audio/ogg",
+            "audio/opus",
+            "audio/wav",
+            "audio/mp4",
+            "audio/aac",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect())
     }
 }
 
@@ -287,7 +300,10 @@ pub fn subscription() -> Subscription<Event> {
             let state = Arc::new(Mutex::new(Snapshot::default()));
             let (action_tx, mut action_rx) = mpsc::unbounded_channel();
             let (update_tx, mut update_rx) = mpsc::unbounded_channel();
-            let imp = Imp { state: state.clone(), actions: action_tx };
+            let imp = Imp {
+                state: state.clone(),
+                actions: action_tx,
+            };
             let server = match Server::new("CosmicAdvancedPlayer", imp).await {
                 Ok(s) => s,
                 Err(err) => {
@@ -295,7 +311,12 @@ pub fn subscription() -> Subscription<Event> {
                     return std::future::pending().await;
                 }
             };
-            let _ = output.send(Event::Ready(Handle { state: state.clone(), updates: update_tx })).await;
+            let _ = output
+                .send(Event::Ready(Handle {
+                    state: state.clone(),
+                    updates: update_tx,
+                }))
+                .await;
             loop {
                 tokio::select! {
                     Some(action) = action_rx.recv() => {

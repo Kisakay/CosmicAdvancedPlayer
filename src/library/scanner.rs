@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 
 //! Recursive, incremental library scanner.
 //!
@@ -38,10 +38,13 @@ pub fn collect_files(roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut seen = HashSet::new();
     let mut files = Vec::new();
     for root in roots {
-        let walker = WalkDir::new(root).follow_links(true).into_iter().filter_entry(|e| {
-            // Skip hidden folders (.git, .Trash…) but never the root itself.
-            e.depth() == 0 || !e.file_name().to_str().is_some_and(|n| n.starts_with('.'))
-        });
+        let walker = WalkDir::new(root)
+            .follow_links(true)
+            .into_iter()
+            .filter_entry(|e| {
+                // Skip hidden folders (.git, .Trash…) but never the root itself.
+                e.depth() == 0 || !e.file_name().to_str().is_some_and(|n| n.starts_with('.'))
+            });
         for entry in walker.flatten() {
             if !entry.file_type().is_file() || !is_audio_file(entry.path()) {
                 continue;
@@ -83,11 +86,18 @@ impl FolderCovers {
 }
 
 fn tag_string(tag: &Tag, key: ItemKey) -> Option<String> {
-    tag.get_string(key).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
+    tag.get_string(key)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 fn parse_gain(s: &str) -> Option<f32> {
-    s.trim().trim_end_matches(|c: char| c.is_alphabetic() || c.is_whitespace()).trim().parse().ok()
+    s.trim()
+        .trim_end_matches(|c: char| c.is_alphabetic() || c.is_whitespace())
+        .trim()
+        .parse()
+        .ok()
 }
 
 fn parse_year(s: &str) -> Option<i32> {
@@ -98,8 +108,15 @@ fn parse_year(s: &str) -> Option<i32> {
 /// Reads the metadata of one file. Never fails: unreadable tags fall back to the file name.
 pub fn read_track(path: &Path, folder_covers: &FolderCovers) -> Option<Track> {
     let (mtime, size) = file_state(path)?;
-    let format = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_lowercase();
-    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let format = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_lowercase();
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let mut track = Track {
         path: path.to_path_buf(),
         title: stem,
@@ -124,11 +141,18 @@ pub fn read_track(path: &Path, folder_covers: &FolderCovers) -> Option<Track> {
         track.channels = props.channels();
 
         if let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) {
-            if let Some(t) = tag.title().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+            if let Some(t) = tag
+                .title()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+            {
                 track.title = t;
             }
-            let artists: Vec<&str> =
-                tag.get_strings(ItemKey::TrackArtist).map(str::trim).filter(|s| !s.is_empty()).collect();
+            let artists: Vec<&str> = tag
+                .get_strings(ItemKey::TrackArtist)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
             track.artist = if artists.len() > 1 {
                 artists.join(", ")
             } else {
@@ -136,19 +160,27 @@ pub fn read_track(path: &Path, folder_covers: &FolderCovers) -> Option<Track> {
             };
             track.album = tag.album().map(|s| s.trim().to_string()).unwrap_or_default();
             track.album_artist = tag_string(tag, ItemKey::AlbumArtist).unwrap_or_default();
-            let genres: Vec<&str> =
-                tag.get_strings(ItemKey::Genre).map(str::trim).filter(|s| !s.is_empty()).collect();
+            let genres: Vec<&str> = tag
+                .get_strings(ItemKey::Genre)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
             track.genre = genres.join("; ");
             track.year = tag
                 .date()
                 .map(|d| i32::from(d.year))
                 .filter(|y| *y > 0)
                 .or_else(|| tag_string(tag, ItemKey::Year).as_deref().and_then(parse_year))
-                .or_else(|| tag_string(tag, ItemKey::RecordingDate).as_deref().and_then(parse_year));
+                .or_else(|| {
+                    tag_string(tag, ItemKey::RecordingDate)
+                        .as_deref()
+                        .and_then(parse_year)
+                });
             track.track_no = tag.track();
             track.disc_no = tag.disk();
-            track.replay_gain =
-                tag_string(tag, ItemKey::ReplayGainTrackGain).as_deref().and_then(parse_gain);
+            track.replay_gain = tag_string(tag, ItemKey::ReplayGainTrackGain)
+                .as_deref()
+                .and_then(parse_gain);
             track.musicbrainz_id = tag_string(tag, ItemKey::MusicBrainzRecordingId);
         }
 
@@ -178,8 +210,10 @@ pub fn scan(
     force: bool,
     progress: &(dyn Fn(usize, usize) + Sync),
 ) -> rusqlite::Result<ScanSummary> {
-    let roots: Vec<PathBuf> =
-        roots.iter().map(|r| std::fs::canonicalize(r).unwrap_or_else(|_| r.clone())).collect();
+    let roots: Vec<PathBuf> = roots
+        .iter()
+        .map(|r| std::fs::canonicalize(r).unwrap_or_else(|_| r.clone()))
+        .collect();
     let known = db.file_states()?;
     let files = collect_files(&roots);
     let found: HashSet<&PathBuf> = files.iter().collect();
@@ -205,7 +239,7 @@ pub fn scan(
         .filter_map(|p| {
             let t = read_track(p, &folder_covers);
             let n = done.fetch_add(1, Ordering::Relaxed) + 1;
-            if n % 16 == 0 || n == total {
+            if n.is_multiple_of(16) || n == total {
                 progress(n, total);
             }
             t
@@ -221,11 +255,19 @@ pub fn scan(
     db.upsert(&tracks)?;
 
     // Remove files that vanished or are no longer below a library folder.
-    let removed: Vec<i64> =
-        known.iter().filter(|(p, _)| !found.contains(p)).map(|(_, (id, _, _))| *id).collect();
+    let removed: Vec<i64> = known
+        .iter()
+        .filter(|(p, _)| !found.contains(p))
+        .map(|(_, (id, _, _))| *id)
+        .collect();
     db.remove_ids(&removed)?;
 
-    Ok(ScanSummary { total: files.len(), added, updated, removed: removed.len() })
+    Ok(ScanSummary {
+        total: files.len(),
+        added,
+        updated,
+        removed: removed.len(),
+    })
 }
 
 /// Reads files that are not part of the library (opened folder, command line).
@@ -241,10 +283,18 @@ pub fn read_transient(paths: &[PathBuf], first_id: i64) -> Vec<Track> {
         }
     }
     let folder_covers = FolderCovers::default();
-    let mut tracks: Vec<Track> = files.par_iter().filter_map(|p| read_track(p, &folder_covers)).collect();
+    let mut tracks: Vec<Track> = files
+        .par_iter()
+        .filter_map(|p| read_track(p, &folder_covers))
+        .collect();
     // Album order within each folder, folders in path order.
     tracks.sort_by(|a, b| {
-        (a.path.parent(), a.disc_no, a.track_no, &a.path).cmp(&(b.path.parent(), b.disc_no, b.track_no, &b.path))
+        (a.path.parent(), a.disc_no, a.track_no, &a.path).cmp(&(
+            b.path.parent(),
+            b.disc_no,
+            b.track_no,
+            &b.path,
+        ))
     });
     for (i, t) in tracks.iter_mut().enumerate() {
         t.id = first_id - i as i64;

@@ -59,6 +59,6 @@ tarball arch=`uname -m`:
     dir="dist/{{name}}-${version}-linux-{{arch}}"
     mkdir -p "$dir"
     just rootdir="$dir" prefix=/ install
-    cp README.md LICENSE packaging/install.sh "$dir/"
+    cp README.md LICENSE "$dir/"
     tar -C dist -czf "$dir.tar.gz" "$(basename "$dir")"
     echo "$dir.tar.gz"
