@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cosmic Advanced Player — a native music player for Linux</title>
+<meta name="description" content="A native music player for Linux, written in Rust with libcosmic: time-synced lyrics, embedded cover art, instant search, gapless playback, Last.fm scrobbling and Discord Rich Presence.">
+<meta name="theme-color" content="#16122e">
+<link rel="canonical" href="https://cosmic-advanced-player.v.bzh/">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cosmic Advanced Player">
+<meta property="og:description" content="A native music player for Linux that knows the words.">
+<meta property="og:url" content="https://cosmic-advanced-player.v.bzh/">
+<meta property="og:image" content="https://cosmic-advanced-player.v.bzh/assets/now-playing.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face { font-family: "Bricolage Grotesque"; src: url(fonts/bricolage-grotesque.woff2) format("woff2"); font-weight: 200 800; font-display: swap; }
+@font-face { font-family: "Instrument Sans"; src: url(fonts/instrument-sans.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
+
+:root {
+  --night: #16122e;
+  --surface: #231d47;
+  --surface-2: #2d2659;
+  --line: #3a3270;
+  --text: #efeaff;
+  --muted: #a9a2d6;
+  --violet: #7c5cff;
+  --blue: #4f7dff;
+  --cyan: #20c4d8;
+  --pink: #ff8ad8;
+  --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --body: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --wrap: 1120px;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--night);
+  color: var(--text);
+  font: 400 1.0625rem/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--cyan); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--pink); outline-offset: 3px; border-radius: 6px; }
+.wrap { width: min(var(--wrap), 100% - 40px); margin-inline: auto; }
+
+/* ---------- header ---------- */
+.top { display: flex; align-items: center; justify-content: space-between; padding-block: 22px; }
+.brand { display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none; font: 700 1.05rem var(--display); letter-spacing: -0.01em; }
+.brand img { width: 38px; height: 38px; }
+.top nav { display: flex; gap: 22px; font-size: 0.95rem; }
+.top nav a { color: var(--muted); text-decoration: none; }
+.top nav a:hover { color: var(--text); }
+
+/* ---------- hero ---------- */
+.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: center; padding-block: 56px 88px; }
+h1 {
+  font: 800 clamp(2.7rem, 6.2vw, 4.9rem)/0.96 var(--display);
+  letter-spacing: -0.035em;
+  margin: 0 0 24px;
+  font-stretch: 90%;
+}
+.lede { color: var(--muted); font-size: 1.2rem; max-width: 34ch; margin: 0 0 34px; }
+.actions { display: flex; flex-wrap: wrap; gap: 14px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 14px 22px; border-radius: 999px;
+  font: 600 1rem var(--body); text-decoration: none; cursor: pointer; border: 0;
+}
+.btn-primary { background: linear-gradient(135deg, var(--violet), var(--blue) 55%, var(--cyan)); color: #fff; }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-ghost { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1.5px var(--line); }
+.btn-ghost:hover { box-shadow: inset 0 0 0 1.5px var(--muted); }
+.fine { color: var(--muted); font-size: 0.9rem; margin-top: 18px; }
+
+/* The lyrics deck: the one memorable thing on the page. */
+.deck {
+  background: var(--surface);
+  border-radius: 28px;
+  padding: 26px 28px 24px;
+  box-shadow: 0 40px 80px -30px rgba(10, 6, 40, 0.9), inset 0 0 0 1px var(--line);
+}
+.deck-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.disc {
+  width: 54px; height: 54px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle, var(--pink) 0 22%, #0d0b1f 23% 27%, #1b1838 28% 100%);
+  box-shadow: inset 0 0 0 1px #3d3672;
+  animation: spin 6s linear infinite;
+}
+.deck-head strong { display: block; font: 700 1.05rem var(--display); }
+.deck-head span { color: var(--muted); font-size: 0.9rem; }
+.lyrics { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; min-height: 236px; }
+.lyrics li {
+  display: grid; grid-template-columns: 5.6em 1fr; gap: 12px; align-items: baseline;
+  color: #7a73b0; font: 600 1.15rem/1.3 var(--display);
+  transition: color .45s ease, transform .45s ease;
+}
+.lyrics time { font: 500 0.82rem var(--body); color: #7a73b0; font-variant-numeric: tabular-nums; }
+.lyrics li.past { color: #9690c8; }
+.lyrics li.now { color: var(--pink); transform: translateX(6px); font-size: 1.45rem; }
+.lyrics li.now time { color: var(--pink); }
+.bar { height: 6px; border-radius: 6px; background: #3a3270; margin-top: 22px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--violet), var(--cyan)); border-radius: inherit; }
+.times { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.82rem; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.source { color: var(--muted); font-size: 0.85rem; margin: 14px 0 0; }
+
+/* ---------- screenshot ---------- */
+.shot { padding-bottom: 96px; }
+.shot figure { margin: 0; }
+.shot img { border-radius: 18px; box-shadow: 0 30px 70px -25px rgba(5, 3, 25, 0.95), 0 0 0 1px var(--line); }
+.shot figcaption { color: var(--muted); font-size: 0.95rem; margin-top: 16px; text-align: center; }
+
+/* ---------- tracklist ---------- */
+section h2 { font: 800 clamp(2rem, 4vw, 2.9rem)/1.02 var(--display); letter-spacing: -0.03em; margin: 0 0 14px; }
+.section-lede { color: var(--muted); max-width: 56ch; margin: 0 0 44px; }
+.sides { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; padding-bottom: 104px; }
+.side h3 { font: 700 1.25rem var(--display); margin: 0 0 6px; }
+.side > p { color: var(--muted); margin: 0 0 18px; font-size: 0.97rem; }
+.tracks { list-style: none; margin: 0; padding: 0; counter-reset: track; }
+.tracks li {
+  counter-increment: track;
+  display: grid; grid-template-columns: 2.2em 1fr; gap: 6px 12px;
+  padding: 16px 0; border-top: 1px solid var(--line);
+}
+.tracks li::before { content: counter(track); color: var(--violet); font: 700 1.05rem var(--display); grid-row: span 2; }
+.tracks strong { font: 650 1.08rem var(--display); }
+.tracks span { color: var(--muted); font-size: 0.97rem; }
+
+/* ---------- gallery ---------- */
+.gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding-bottom: 104px; }
+.gallery figure { margin: 0; }
+.gallery img { border-radius: 12px; box-shadow: 0 0 0 1px var(--line); }
+.gallery figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 10px; }
+
+/* ---------- install ---------- */
+.install { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; padding-bottom: 104px; }
+.pkg { background: var(--surface); border-radius: 18px; padding: 24px; box-shadow: inset 0 0 0 1px var(--line); min-width: 0; }
+.pkg h3 { font: 700 1.15rem var(--display); margin: 0 0 4px; }
+.pkg p { color: var(--muted); margin: 0 0 14px; font-size: 0.95rem; }
+.pkg.wide { grid-column: 1 / -1; }
+.cmd { display: flex; gap: 10px; align-items: flex-start; }
+.cmd pre {
+  flex: 1; min-width: 0;
+  margin: 0; padding: 14px 16px; border-radius: 12px;
+  background: #120f27; color: #d9d3ff; overflow-x: auto;
+  font: 0.88rem/1.55 ui-monospace, "JetBrains Mono", "Cascadia Code", monospace;
+}
+.copy {
+  flex: none; margin-top: 8px;
+  background: var(--surface-2); color: var(--text); border: 0; border-radius: 8px;
+  padding: 6px 12px; font: 600 0.82rem var(--body); cursor: pointer;
+}
+.copy:hover { background: #3a3270; }
+code { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 0.92em; }
+
+/* ---------- footer ---------- */
+footer { border-top: 1px solid var(--line); padding-block: 32px 48px; color: var(--muted); font-size: 0.93rem; display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .disc { animation: none; }
+  .lyrics li { transition: none; }
+}
+@media (max-width: 900px) {
+  .hero, .sides { grid-template-columns: 1fr; gap: 40px; }
+  .gallery { grid-template-columns: 1fr 1fr; }
+  .install { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .top nav a:not(.gh) { display: none; }
+  .gallery { grid-template-columns: 1fr; }
+  .deck { padding: 22px 18px; }
+  .lyrics li { grid-template-columns: 4.6em 1fr; font-size: 1rem; }
+  .lyrics li.now { font-size: 1.2rem; }
+}
+</style>
+</head>
+<body>
+<header class="wrap top">
+  <a class="brand" href="./"><img src="assets/icon.svg" alt="" width="38" height="38">Cosmic Advanced Player</a>
+  <nav aria-label="Main">
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a class="gh" href="https://github.com/Kisakay/CosmicAdvancedPlayer">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <h1>A music player that knows the words.</h1>
+      <p class="lede">Cosmic Advanced Player plays your local music library with time-synced lyrics, real album art and a desktop that stays in tune. Native on Linux, built with Rust and COSMIC.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#install">Install for Linux</a>
+        <a class="btn btn-ghost" href="https://github.com/Kisakay/CosmicAdvancedPlayer">Read the source</a>
+      </div>
+      <p class="fine">Free software under the GPL v3. Built for x86_64 and aarch64.</p>
+    </div>
+
+    <div class="deck" aria-label="Synced lyrics, as shown in the player">
+      <div class="deck-head">
+        <div class="disc" aria-hidden="true"></div>
+        <div><strong>Lumière</strong><span>Les Ondes, from the album Soleil</span></div>
+      </div>
+      <ol class="lyrics" id="lyrics">
+        <li><time>[00:00.50]</time>The first light on the water</li>
+        <li><time>[00:04.00]</time>The sun climbs over the bay</li>
+        <li><time>[00:08.00]</time>A wave of colour breaking</li>
+        <li><time>[00:12.00]</time>Every word right on the beat</li>
+        <li><time>[00:16.00]</time>And the chorus comes around</li>
+      </ol>
+      <div class="bar" aria-hidden="true"><i id="progress"></i></div>
+      <div class="times" aria-hidden="true"><span id="elapsed">0:00</span><span>0:20</span></div>
+      <p class="source">Lyrics come from a local .lrc file, LRCLIB, lyrics.ovh or the file's own tags. Click any line in the player to jump to it.</p>
+    </div>
+  </div>
+
+  <div class="wrap shot">
+    <figure>
+      <img src="assets/now-playing.png" width="1440" height="900" alt="The now playing view: a large album cover on the left and synced lyrics on the right, over a background tinted with the cover's colours.">
+      <figcaption>The now playing view takes its colours from the album cover.</figcaption>
+    </figure>
+  </div>
+
+  <section class="wrap" id="features" aria-labelledby="features-title">
+    <h2 id="features-title">What it does</h2>
+    <p class="section-lede">Point it at your music folders once. It reads every file, keeps the index up to date as you add albums, and stays out of the way while you listen.</p>
+
+    <div class="sides">
+      <div class="side">
+        <h3>Side A, listening</h3>
+        <p>Everything that happens inside the player.</p>
+        <ol class="tracks">
+          <li><strong>Synced lyrics</strong><span>Karaoke-style lines that follow the song, from .lrc files, embedded tags, LRCLIB or lyrics.ovh. You choose and order the sources.</span></li>
+          <li><strong>Real album art</strong><span>Covers embedded in FLAC, MP3, M4A and Ogg files, or the cover.jpg next to them. Each image is cached once.</span></li>
+          <li><strong>A library that keeps itself current</strong><span>Folders are scanned recursively, symbolic links included, and re-indexed when files change. Only new or edited files are read again.</span></li>
+          <li><strong>Search as you type</strong><span>Titles, artists, albums and genres, with partial words and accents ignored.</span></li>
+          <li><strong>Gapless playback</strong><span>Live albums and mixes play without a click between tracks. ReplayGain keeps the volume even.</span></li>
+          <li><strong>Pick up where you left off</strong><span>The queue and position are restored when you open the player again.</span></li>
+        </ol>
+      </div>
+      <div class="side">
+        <h3>Side B, connected</h3>
+        <p>Everything that talks to the rest of your desktop.</p>
+        <ol class="tracks">
+          <li><strong>Last.fm scrobbling</strong><span>Now playing, scrobbles saved offline until they can be sent, and favourites synced as loved tracks.</span></li>
+          <li><strong>Discord Rich Presence</strong><span>Shows “Listening to” with the album cover and a progress bar, over Discord's local connection.</span></li>
+          <li><strong>Media keys and panel controls</strong><span>MPRIS support for keyboard media keys, the COSMIC panel applet, playerctl and phone remotes.</span></li>
+          <li><strong>Open anything</strong><span>Play a folder or a few files from your file manager or the command line without adding them to the library.</span></li>
+          <li><strong>Follows your desktop</strong><span>Light and dark themes, accent colour and fonts come from COSMIC. English and French included.</span></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" aria-labelledby="gallery-title">
+    <h2 id="gallery-title">Around the library</h2>
+    <p class="section-lede">Albums, songs and genres, each one click from the music.</p>
+    <div class="gallery">
+      <figure><img src="assets/albums.png" width="1440" height="900" loading="lazy" alt="Album grid with three album covers."><figcaption>Albums with their covers</figcaption></figure>
+      <figure><img src="assets/songs.png" width="1440" height="900" loading="lazy" alt="Song list sortable by artist, title, album, duration, date added and plays."><figcaption>Songs, sorted your way</figcaption></figure>
+      <figure><img src="assets/genres.png" width="1440" height="900" loading="lazy" alt="Genre tiles in different colours."><figcaption>Genres at a glance</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="wrap" id="install" aria-labelledby="install-title">
+    <h2 id="install-title">Install</h2>
+    <p class="section-lede">Every <a href="https://github.com/Kisakay/CosmicAdvancedPlayer/releases/latest">release</a> is built for x86_64 and aarch64, with checksums. Replace <code>VERSION</code> and the architecture with the ones you need.</p>
+    <div class="install">
+      <div class="pkg">
+        <h3>Debian and Ubuntu</h3>
+        <p>Download the .deb from the latest release, then install it.</p>
+        <div class="cmd"><pre><code>sudo apt install ./cosmic-advanced-player_VERSION-1_amd64.deb</code></pre><button class="copy" type="button">Copy</button></div>
+      </div>
+      <div class="pkg">
+        <h3>Fedora and openSUSE</h3>
+        <p>Download the .rpm from the latest release, then install it.</p>
+        <div class="cmd"><pre><code>sudo dnf install ./cosmic-advanced-player-VERSION-1.x86_64.rpm</code></pre><button class="copy" type="button">Copy</button></div>
+      </div>
+      <div class="pkg">
+        <h3>Any distribution</h3>
+        <p>The AppImage runs without installing anything.</p>
+        <div class="cmd"><pre><code>chmod +x cosmic-advanced-player-VERSION-x86_64.AppImage
+./cosmic-advanced-player-VERSION-x86_64.AppImage</code></pre><button class="copy" type="button">Copy</button></div>
+      </div>
+      <div class="pkg">
+        <h3>Try it with Nix</h3>
+        <p>Runs the prebuilt release binary, nothing to compile.</p>
+        <div class="cmd"><pre><code>nix run github:Kisakay/CosmicAdvancedPlayer</code></pre><button class="copy" type="button">Copy</button></div>
+      </div>
+      <div class="pkg wide">
+        <h3>NixOS and Home Manager</h3>
+        <p>Add the flake, then enable the module. It installs the binary published on GitHub.</p>
+        <div class="cmd"><pre><code># flake.nix
+inputs.cosmic-advanced-player.url = "github:Kisakay/CosmicAdvancedPlayer";
+
+# configuration.nix (or home.nix with homeManagerModules.default)
+imports = [ inputs.cosmic-advanced-player.nixosModules.default ];
+programs.cosmic-advanced-player.enable = true;</code></pre><button class="copy" type="button">Copy</button></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <span>Cosmic Advanced Player is free software, released under the <a href="https://github.com/Kisakay/CosmicAdvancedPlayer/blob/main/LICENSE">GNU GPL v3</a>.</span>
+  <span>Made by <a href="https://v.bzh">Kisakay</a> with Rust and <a href="https://github.com/pop-os/libcosmic">libcosmic</a>.</span>
+</footer>
+
+<script>
+(() => {
+  // Copy buttons for the install commands.
+  for (const btn of document.querySelectorAll(".copy")) {
+    btn.addEventListener("click", async () => {
+      const text = btn.parentElement.querySelector("code").textContent.trim();
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = "Copied";
+      } catch {
+        btn.textContent = "Select and copy";
+      }
+      setTimeout(() => (btn.textContent = "Copy"), 1800);
+    });
+  }
+
+  // The lyrics deck plays a 20 second loop, like the player does.
+  const lines = [...document.querySelectorAll("#lyrics li")];
+  const stamps = [0.5, 4, 8, 12, 16];
+  const length = 20;
+  const bar = document.getElementById("progress");
+  const elapsed = document.getElementById("elapsed");
+  const show = (t) => {
+    let current = -1;
+    stamps.forEach((s, i) => { if (t >= s) current = i; });
+    lines.forEach((li, i) => {
+      li.classList.toggle("now", i === current);
+      li.classList.toggle("past", i < current);
+    });
+    bar.style.width = `${(t / length) * 100}%`;
+    elapsed.textContent = `0:${String(Math.floor(t)).padStart(2, "0")}`;
+  };
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { show(5); return; }
+  // Start just after the second line so a line is lit from the first frame.
+  const start = performance.now() - 4500;
+  const tick = (now) => {
+    show(((now - start) / 1000) % length);
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

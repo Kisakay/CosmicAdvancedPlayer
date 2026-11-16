@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://cosmic-advanced-player.v.bzh/sitemap.xml

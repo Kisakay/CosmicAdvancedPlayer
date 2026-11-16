@@ -6,6 +6,8 @@
 
 **A beautiful native music player for Linux, written in Rust with [libcosmic](https://github.com/pop-os/libcosmic).**
 
+🌐 **[cosmic-advanced-player.v.bzh](https://cosmic-advanced-player.v.bzh)**
+
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 ![Rust](https://img.shields.io/badge/rust-2024-orange?logo=rust)
 ![NixOS](https://img.shields.io/badge/NixOS-ready-5277C3?logo=nixos&logoColor=white)
