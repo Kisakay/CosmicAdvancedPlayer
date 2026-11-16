@@ -236,7 +236,17 @@ fn discord(app: &App) -> Element<'_, Message> {
             fl!("discord-covers"),
             widget::toggler(app.config.discord_online_covers).on_toggle(Message::DiscordOnlineCovers),
         ))
-        .add(caption(fl!("discord-covers-help")));
+        .add(caption(fl!("discord-covers-help")))
+        .add(settings::item(
+            fl!("discord-upload-covers"),
+            widget::toggler(app.config.discord_upload_covers && app.config.discord_online_covers)
+                .on_toggle_maybe(
+                    app.config
+                        .discord_online_covers
+                        .then_some(Message::DiscordUploadCovers as fn(bool) -> Message),
+                ),
+        ))
+        .add(caption(fl!("discord-upload-covers-help")));
     if !app.config.discord_client_id.is_empty() {
         section = section.add(
             widget::button::link(fl!("discord-create-app")).on_press(Message::LaunchUrl(

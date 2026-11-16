@@ -5,6 +5,7 @@
 mod app;
 mod audio;
 mod config;
+mod cover_url;
 mod discord;
 mod i18n;
 mod lastfm;

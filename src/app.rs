@@ -22,7 +22,7 @@ use crate::library::scanner::{self, ScanSummary};
 use crate::library::{AlbumKey, Library, SongSort, Track, covers, watcher};
 use crate::lyrics::{self, Lyrics, Provider};
 use crate::queue::{Queue, Repeat};
-use crate::{audio, discord, fl, lastfm, mpris};
+use crate::{audio, cover_url, discord, fl, lastfm, mpris};
 
 pub const APP_ICON: &[u8] =
     include_bytes!("../resources/icons/hicolor/scalable/apps/io.github.kisakay.CosmicAdvancedPlayer.svg");
@@ -255,7 +255,7 @@ pub enum Message {
     LyricsRefresh,
     SeekToLine(usize),
     Ambient(String, Option<PathBuf>, Option<[f32; 3]>),
-    DiscordCover((String, String), Option<String>),
+    DiscordCover(String, Option<String>),
     // Settings
     AddLibraryFolder,
     LibraryFolderPicked(Option<PathBuf>),
@@ -280,6 +280,7 @@ pub enum Message {
     DiscordEnabled(bool),
     DiscordClientId(String),
     DiscordOnlineCovers(bool),
+    DiscordUploadCovers(bool),
     // Chrome
     Menu(MenuAction),
     ToggleContextPage(ContextPage),
@@ -345,7 +346,8 @@ pub struct App {
     // Integrations
     mpris: Option<mpris::Handle>,
     discord: discord::Handle,
-    discord_covers: HashMap<(String, String), Option<String>>,
+    /// Public cover URL per `cover_url::Query::key` (None = lookup failed or running).
+    discord_covers: HashMap<String, Option<String>>,
     session: crate::session::Saver,
     /// What was last handed to the session writer (queue fingerprint, index, position).
     saved_session: Option<(u64, usize, u64)>,
@@ -1151,6 +1153,13 @@ impl cosmic::Application for App {
             Message::DiscordOnlineCovers(on) => {
                 self.config.discord_online_covers = on;
                 self.save_config();
+                return self.publish_discord_task();
+            }
+            Message::DiscordUploadCovers(on) => {
+                self.config.discord_upload_covers = on;
+                self.save_config();
+                // Covers not found earlier may now be uploaded.
+                self.discord_covers.retain(|_, url| url.is_some());
                 return self.publish_discord_task();
             }
 
@@ -1971,8 +1980,13 @@ impl App {
         self.publish_discord();
     }
 
-    fn discord_key(t: &Track) -> (String, String) {
-        (t.grouping_artist().to_string(), t.album.clone())
+    fn cover_query(t: &Track) -> cover_url::Query {
+        cover_url::Query {
+            artist: t.artist.clone(),
+            album: t.album.clone(),
+            title: t.title.clone(),
+            cover: t.cover.clone(),
+        }
     }
 
     fn publish_discord(&self) {
@@ -1987,7 +2001,11 @@ impl App {
                 title: t.title.clone(),
                 artist: t.artist.clone(),
                 album: t.album.clone(),
-                cover_url: self.discord_covers.get(&Self::discord_key(t)).cloned().flatten(),
+                cover_url: self
+                    .discord_covers
+                    .get(&Self::cover_query(t).key())
+                    .cloned()
+                    .flatten(),
                 position: self.position,
                 duration: self.duration,
                 paused: !self.playing,
@@ -2004,21 +2022,20 @@ impl App {
         let Some(track) = self.queue.current().cloned() else {
             return Task::none();
         };
-        let key = Self::discord_key(&track);
-        if key.1.is_empty() || self.discord_covers.contains_key(&key) {
+        let query = Self::cover_query(&track);
+        if query.artist.is_empty() && query.cover.is_none() {
+            return Task::none();
+        }
+        let key = query.key();
+        if self.discord_covers.contains_key(&key) {
             return Task::none();
         }
         self.discord_covers.insert(key.clone(), None);
         let http = self.http.clone();
-        let creds = self.lastfm_credentials();
+        let creds = Some(self.lastfm_credentials());
+        let upload = self.config.discord_upload_covers;
         cosmic::task::future(async move {
-            let mut url = None;
-            if !creds.api_key.is_empty() {
-                url = lastfm::album_art_url(&http, &creds, &key.0, &key.1).await;
-            }
-            if url.is_none() {
-                url = discord::itunes_cover(&http, &key.0, &key.1).await;
-            }
+            let url = cover_url::resolve(&http, &query, creds, upload).await;
             Message::DiscordCover(key, url)
         })
     }

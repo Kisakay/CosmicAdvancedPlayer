@@ -68,6 +68,8 @@ pub struct Config {
     pub discord_client_id: String,
     /// Look covers up online (Last.fm / iTunes) so Discord can display them.
     pub discord_online_covers: bool,
+    /// Upload covers no catalogue knows to a temporary host (deleted after 72 h).
+    pub discord_upload_covers: bool,
 }
 
 /// Official Discord application ("Cosmic Advanced Player"): its name is what
@@ -102,6 +104,7 @@ impl Default for Config {
             discord_enabled: true,
             discord_client_id: String::new(),
             discord_online_covers: true,
+            discord_upload_covers: true,
         }
     }
 }

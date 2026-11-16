@@ -82,10 +82,19 @@ and are kept in the database until Last.fm accepts them, so nothing is lost offl
 
 ### Discord
 
-Discord shows the name of the *application* in “Listening to …”. Create an application named
-**Cosmic Advanced Player** in the [developer portal](https://discord.com/developers/applications)
-and paste its **Application ID** in **Settings → Discord**. Album covers need a public URL: they are
-looked up on Last.fm (when an API key is set) or with the iTunes Search API — this can be turned off.
+The presence works out of the box with the official **Cosmic Advanced Player** application; another
+Application ID can be set in **Settings → Discord**.
+
+Discord only shows images it can download, so the cover of the playing track is published like this:
+
+1. looked up on **Deezer**, then **iTunes**, then **Last.fm** (when an API key is set), checking that
+   the artist and the album or title match;
+2. if no catalogue knows it, the cover embedded in the file is uploaded to a temporary host
+   (litterbox.catbox.moe, deleted after 72 h, or uguu.se, deleted after 3 h);
+3. otherwise the player icon is shown.
+
+Results are cached in `~/.cache/cosmic-advanced-player/discord-covers.json`. Online lookups and
+uploads can each be turned off in the settings.
 
 ## 📦 Install
 

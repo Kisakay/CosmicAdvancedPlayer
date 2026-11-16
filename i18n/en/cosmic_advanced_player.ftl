@@ -196,4 +196,6 @@ discord-client-id = Discord application ID
 discord-client-id-help = Leave empty to use the official “Cosmic Advanced Player” application. Discord shows the name of the application in “Listening to …”.
 discord-create-app = Open the Discord developer portal
 discord-covers = Show album covers
-discord-covers-help = Covers are looked up online (Last.fm, iTunes) because Discord needs a public image URL.
+discord-covers-help = Discord can only show images from the internet: covers are looked up on Deezer, iTunes and Last.fm.
+discord-upload-covers = Share covers that are not found online
+discord-upload-covers-help = The cover embedded in the file is uploaded to a temporary host (litterbox.catbox.moe or uguu.se) that deletes it after a few hours.

@@ -196,4 +196,6 @@ discord-client-id = ID de l’application Discord
 discord-client-id-help = Laissez vide pour utiliser l’application officielle « Cosmic Advanced Player ». Discord affiche le nom de l’application (« Écoute … »).
 discord-create-app = Ouvrir le portail développeur Discord
 discord-covers = Afficher les pochettes
-discord-covers-help = Les pochettes sont cherchées en ligne (Last.fm, iTunes) car Discord a besoin d’une URL d’image publique.
+discord-covers-help = Discord n’affiche que des images en ligne : les pochettes sont cherchées sur Deezer, iTunes et Last.fm.
+discord-upload-covers = Partager les pochettes introuvables en ligne
+discord-upload-covers-help = La pochette intégrée au fichier est envoyée sur un hébergeur temporaire (litterbox.catbox.moe ou uguu.se) qui la supprime après quelques heures.

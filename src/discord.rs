@@ -14,7 +14,6 @@ use discord_rich_presence::activity::{
     Activity, ActivityType, Assets, Button, StatusDisplayType, Timestamps,
 };
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
-use serde_json::Value;
 
 const RETRY: Duration = Duration::from_secs(15);
 const APP_ICON_URL: &str = "https://raw.githubusercontent.com/Kisakay/CosmicAdvancedPlayer/main/resources/icons/io.github.kisakay.CosmicAdvancedPlayer-1024.png";
@@ -205,36 +204,6 @@ fn run(rx: &mpsc::Receiver<Command>) {
             }
         }
     }
-}
-
-/// Finds a public album cover URL with the iTunes Search API (no account needed).
-pub async fn itunes_cover(client: &reqwest::Client, artist: &str, album: &str) -> Option<String> {
-    let term = format!("{artist} {album}");
-    let url = format!(
-        "https://itunes.apple.com/search?media=music&entity=album&limit=5&term={}",
-        urlencoding::encode(term.trim())
-    );
-    let v: Value = client
-        .get(&url)
-        .timeout(Duration::from_secs(10))
-        .send()
-        .await
-        .ok()?
-        .json()
-        .await
-        .ok()?;
-    let results = v.get("results")?.as_array()?;
-    let album_lower = album.to_lowercase();
-    let best = results
-        .iter()
-        .find(|r| {
-            r.get("collectionName")
-                .and_then(Value::as_str)
-                .is_some_and(|n| n.to_lowercase().contains(&album_lower))
-        })
-        .or_else(|| results.first())?;
-    let art = best.get("artworkUrl100")?.as_str()?;
-    Some(art.replace("100x100bb", "512x512bb"))
 }
 
 #[cfg(test)]
