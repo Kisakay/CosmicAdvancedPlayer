@@ -75,9 +75,9 @@ pub struct Config {
     pub discord_online_covers: bool,
 }
 
-/// Default Discord application. Its name ("Cosmic Advanced Player") is what
-/// Discord shows in "Listening to …". Can be replaced in the settings.
-pub const DEFAULT_DISCORD_CLIENT_ID: &str = "";
+/// Official Discord application ("Cosmic Advanced Player"): its name is what
+/// Discord shows in "Listening to …". Another one can be set in the settings.
+pub const DEFAULT_DISCORD_CLIENT_ID: &str = "1571841011779633162";
 
 impl Default for Config {
     fn default() -> Self {
@@ -108,7 +108,7 @@ impl Default for Config {
             lastfm_now_playing: true,
             lastfm_love: true,
             discord_enabled: true,
-            discord_client_id: DEFAULT_DISCORD_CLIENT_ID.to_string(),
+            discord_client_id: String::new(),
             discord_online_covers: true,
         }
     }
@@ -160,6 +160,17 @@ impl Config {
             .collect()
     }
 
+    /// Discord application to use: the custom one, or the official one when empty.
+    #[must_use]
+    pub fn discord_app_id(&self) -> &str {
+        let id = self.discord_client_id.trim();
+        if id.is_empty() {
+            DEFAULT_DISCORD_CLIENT_ID
+        } else {
+            id
+        }
+    }
+
     #[must_use]
     pub fn lastfm_connected(&self) -> bool {
         !self.lastfm_session.is_empty()
@@ -183,5 +194,13 @@ mod tests {
         assert_eq!(c.lyrics_order[0], Provider::Lrclib);
         assert!(!c.lyrics_providers().contains(&Provider::Embedded));
         assert!((c.volume - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn empty_discord_id_uses_the_official_app() {
+        let mut c = Config::default();
+        assert_eq!(c.discord_app_id(), DEFAULT_DISCORD_CLIENT_ID);
+        c.discord_client_id = " 42 ".into();
+        assert_eq!(c.discord_app_id(), "42");
     }
 }

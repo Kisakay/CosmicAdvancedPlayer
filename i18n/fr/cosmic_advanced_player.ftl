@@ -193,7 +193,7 @@ disconnect = Se déconnecter
 # Discord
 discord-enable = Afficher ce que j’écoute sur Discord
 discord-client-id = ID de l’application Discord
-discord-client-id-help = Discord affiche le nom de cette application (« Écoute … »). Créez-en une nommée « Cosmic Advanced Player » et collez son ID.
+discord-client-id-help = Laissez vide pour utiliser l’application officielle « Cosmic Advanced Player ». Discord affiche le nom de l’application (« Écoute … »).
 discord-create-app = Ouvrir le portail développeur Discord
 discord-covers = Afficher les pochettes
 discord-covers-help = Les pochettes sont cherchées en ligne (Last.fm, iTunes) car Discord a besoin d’une URL d’image publique.

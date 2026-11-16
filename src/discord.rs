@@ -17,6 +17,7 @@ use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 use serde_json::Value;
 
 const RETRY: Duration = Duration::from_secs(15);
+const APP_ICON_URL: &str = "https://raw.githubusercontent.com/Kisakay/CosmicAdvancedPlayer/main/resources/icons/io.github.kisakay.CosmicAdvancedPlayer-1024.png";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Presence {
@@ -98,10 +99,9 @@ fn publish(client: &mut DiscordIpcClient, p: &Presence) -> Result<(), discord_ri
     let album = truncate(if p.album.is_empty() { &p.title } else { &p.album }, 128);
     let url = lastfm_track_url(p);
 
-    let mut assets = Assets::new().large_text(&album);
-    if let Some(cover) = &p.cover_url {
-        assets = assets.large_image(cover);
-    }
+    // Without an online cover, show the app icon rather than an empty square.
+    let image = p.cover_url.as_deref().unwrap_or(APP_ICON_URL);
+    let mut assets = Assets::new().large_text(&album).large_image(image);
     if p.paused {
         assets = assets.small_text("Paused");
     }

@@ -193,7 +193,7 @@ disconnect = Disconnect
 # Discord
 discord-enable = Show what I listen to on Discord
 discord-client-id = Discord application ID
-discord-client-id-help = Discord shows the name of this application (“Listening to …”). Create one named “Cosmic Advanced Player” and paste its ID.
+discord-client-id-help = Leave empty to use the official “Cosmic Advanced Player” application. Discord shows the name of the application in “Listening to …”.
 discord-create-app = Open the Discord developer portal
 discord-covers = Show album covers
 discord-covers-help = Covers are looked up online (Last.fm, iTunes) because Discord needs a public image URL.

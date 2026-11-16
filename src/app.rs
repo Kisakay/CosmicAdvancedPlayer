@@ -392,7 +392,7 @@ impl cosmic::Application for App {
             .unwrap_or_default();
 
         let discord = discord::spawn();
-        discord.configure(config.discord_enabled, &config.discord_client_id);
+        discord.configure(config.discord_enabled, config.discord_app_id());
 
         let mut queue = Queue::default();
         queue.repeat = config.repeat;
@@ -1094,14 +1094,14 @@ impl cosmic::Application for App {
             Message::DiscordEnabled(on) => {
                 self.config.discord_enabled = on;
                 self.save_config();
-                self.discord.configure(on, &self.config.discord_client_id);
+                self.discord.configure(on, self.config.discord_app_id());
                 return self.publish_discord_task();
             }
             Message::DiscordClientId(id) => {
                 self.config.discord_client_id = id.chars().filter(char::is_ascii_digit).collect();
                 self.save_config();
                 self.discord
-                    .configure(self.config.discord_enabled, &self.config.discord_client_id);
+                    .configure(self.config.discord_enabled, self.config.discord_app_id());
                 self.publish_discord();
             }
             Message::DiscordOnlineCovers(on) => {

@@ -223,8 +223,11 @@ fn discord(app: &App) -> Element<'_, Message> {
             widget::column::with_capacity(3)
                 .push(widget::text::body(fl!("discord-client-id")))
                 .push(
-                    widget::text_input("123456789012345678", app.config.discord_client_id.as_str())
-                        .on_input(Message::DiscordClientId),
+                    widget::text_input(
+                        crate::config::DEFAULT_DISCORD_CLIENT_ID,
+                        app.config.discord_client_id.as_str(),
+                    )
+                    .on_input(Message::DiscordClientId),
                 )
                 .push(caption(fl!("discord-client-id-help")))
                 .spacing(4),
@@ -234,7 +237,7 @@ fn discord(app: &App) -> Element<'_, Message> {
             widget::toggler(app.config.discord_online_covers).on_toggle(Message::DiscordOnlineCovers),
         ))
         .add(caption(fl!("discord-covers-help")));
-    if app.config.discord_client_id.is_empty() {
+    if !app.config.discord_client_id.is_empty() {
         section = section.add(
             widget::button::link(fl!("discord-create-app")).on_press(Message::LaunchUrl(
                 "https://discord.com/developers/applications".into(),
