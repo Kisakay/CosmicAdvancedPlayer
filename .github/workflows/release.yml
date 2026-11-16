@@ -1,0 +1,185 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Manual runs only build the packages (artifacts); they never publish.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            deb_arch: amd64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            deb_arch: arm64
+            runner: ubuntu-22.04-arm
+    # Ubuntu 22.04 (glibc 2.35) keeps the binaries compatible with most distributions.
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libxkbcommon-dev libwayland-dev libfontconfig1-dev \
+            libfreetype-dev libexpat1-dev libdbus-1-dev libasound2-dev rpm file
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.arch }}
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-deb,cargo-generate-rpm
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Smoke test
+        run: ./target/release/cosmic-advanced-player --version
+
+      - name: Package tarball
+        run: just tarball ${{ matrix.arch }}
+
+      - name: Package .deb
+        run: cargo deb --no-build --no-strip --locked --output dist/
+
+      - name: Package .rpm
+        run: cargo generate-rpm --output dist/
+
+      - name: Package AppImage
+        run: packaging/appimage.sh ${{ matrix.arch }}
+
+      - name: Verify packages
+        run: |
+          ls -la dist
+          dpkg-deb --info dist/*.deb
+          rpm -qip dist/*.rpm
+          tar -tzf dist/*.tar.gz
+          file dist/*.AppImage
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-${{ matrix.arch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.AppImage
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    # Releases are immutable: each tag is published exactly once.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Refuse to overwrite an existing release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists. Releases are immutable: bump the version and push a new tag."
+            exit 1
+          fi
+
+      - name: Check tag matches Cargo.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          test "v$version" = "$TAG" || { echo "::error::Tag $TAG does not match Cargo.toml version $version"; exit 1; }
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: packages-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Release notes
+        run: |
+          version=${TAG#v}
+          cat > notes.md <<NOTES
+          ## Install
+
+          | Format | x86_64 | aarch64 |
+          |---|---|---|
+          | Debian / Ubuntu (.deb) | \`cosmic-advanced-player_${version}-1_amd64.deb\` | \`cosmic-advanced-player_${version}-1_arm64.deb\` |
+          | Fedora / openSUSE (.rpm) | \`cosmic-advanced-player-${version}-1.x86_64.rpm\` | \`cosmic-advanced-player-${version}-1.aarch64.rpm\` |
+          | Any distro (AppImage) | \`cosmic-advanced-player-${version}-x86_64.AppImage\` | \`cosmic-advanced-player-${version}-aarch64.AppImage\` |
+          | Any distro (.tar.gz) | \`cosmic-advanced-player-${version}-linux-x86_64.tar.gz\` | \`cosmic-advanced-player-${version}-linux-aarch64.tar.gz\` |
+          | NixOS (prebuilt) | \`nix run github:${{ github.repository }}\` | same |
+
+          NOTES
+
+      # Created as a draft with every asset attached, then published in one step,
+      # so the (immutable) published release is complete from the start.
+      - name: Publish
+        run: |
+          gh release create "$TAG" dist/* \
+            --draft --verify-tag --generate-notes --notes-file notes.md \
+            --title "Cosmic Advanced Player ${TAG#v}"
+          gh release edit "$TAG" --draft=false --latest
+
+  nix-pin:
+    name: Pin release binaries in the flake
+    needs: release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: packages-*
+          path: dist
+          merge-multiple: true
+
+      - name: Write nix/release.json
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          sri() { echo "sha256-$(openssl dgst -sha256 -binary "$1" | base64 -w0)"; }
+          x86=$(sri dist/cosmic-advanced-player-${version}-linux-x86_64.tar.gz)
+          arm=$(sri dist/cosmic-advanced-player-${version}-linux-aarch64.tar.gz)
+          cat > nix/release.json <<JSON
+          {
+            "version": "${version}",
+            "hashes": {
+              "x86_64-linux": "${x86}",
+              "aarch64-linux": "${arm}"
+            }
+          }
+          JSON
+          cat nix/release.json
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add nix/release.json
+          git commit -m "nix: serve prebuilt binaries of ${GITHUB_REF_NAME}"
+          git push origin HEAD:main

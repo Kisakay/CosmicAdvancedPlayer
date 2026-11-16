@@ -5,6 +5,7 @@
   just,
   pkg-config,
   alsa-lib,
+  sqlite,
   fontconfig,
   freetype,
   libxkbcommon,
@@ -46,6 +47,7 @@ rustPlatform.buildRustPackage {
 
   buildInputs = [
     alsa-lib
+    sqlite
     fontconfig
     freetype
     libxkbcommon
@@ -67,7 +69,7 @@ rustPlatform.buildRustPackage {
   meta = {
     description = cargoToml.package.description;
     homepage = "https://github.com/Kisakay/CosmicAdvancedPlayer";
-    license = lib.licenses.mit;
+    license = lib.licenses.gpl3Only;
     mainProgram = "cosmic-advanced-player";
     platforms = lib.platforms.linux;
   };
