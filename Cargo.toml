@@ -1,0 +1,61 @@
+[package]
+name = "cosmic-advanced-player"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+description = "A beautiful native music player for Linux, built with Rust and libcosmic"
+repository = "https://github.com/Kisakay/CosmicAdvancedPlayer"
+homepage = "https://github.com/Kisakay/CosmicAdvancedPlayer"
+readme = "README.md"
+keywords = ["music", "player", "audio", "cosmic", "lastfm"]
+categories = ["multimedia::audio", "gui"]
+authors = ["Kisakay"]
+
+[[bin]]
+name = "cosmic-advanced-player"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+dirs = "7"
+futures = "0.3"
+i18n-embed = { version = "0.16", features = ["fluent-system", "desktop-requester"] }
+i18n-embed-fl = "0.10"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "bmp", "gif"] }
+lofty = "0.25"
+md-5 = "0.10"
+mpris-server = { version = "0.11", features = ["tokio"] }
+notify = "8"
+open = "5"
+rand = "0.9"
+rayon = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rfd = { version = "0.16", default-features = false, features = ["xdg-portal", "tokio"] }
+rodio = { version = "0.23", default-features = false, features = ["playback", "symphonia-all"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+rust-embed = "8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+discord-rich-presence = "1.1"
+tokio = { version = "1", features = ["full"] }
+urlencoding = "2"
+walkdir = "2"
+
+[dependencies.libcosmic]
+git = "https://github.com/pop-os/libcosmic.git"
+default-features = false
+features = ["winit", "tokio", "x11", "wayland", "multi-window", "dbus-config", "about", "single-instance", "wgpu", "a11y"]
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true
+opt-level = 3
+
+# Decoding in debug builds is painfully slow without this.
+[profile.dev.package."*"]
+opt-level = 2

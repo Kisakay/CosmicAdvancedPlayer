@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.kisakay.CosmicAdvancedPlayer</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Cosmic Advanced Player</name>
+  <summary>A beautiful native music player for Linux</summary>
+  <description>
+    <p>
+      Cosmic Advanced Player is a fast, native music player built with Rust and the
+      COSMIC toolkit. It indexes your music folders, reads embedded cover art, shows
+      synced lyrics, scrobbles to Last.fm and shares what you listen to on Discord.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.kisakay.CosmicAdvancedPlayer.desktop</launchable>
+  <url type="homepage">https://github.com/Kisakay/CosmicAdvancedPlayer</url>
+  <url type="bugtracker">https://github.com/Kisakay/CosmicAdvancedPlayer/issues</url>
+  <developer id="io.github.kisakay">
+    <name>Kisakay</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>cosmic-advanced-player</binary>
+  </provides>
+</component>

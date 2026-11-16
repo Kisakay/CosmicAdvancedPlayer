@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=Cosmic Advanced Player
+GenericName=Music Player
+GenericName[fr]=Lecteur de musique
+Comment=Play and organise your music library
+Comment[fr]=Écoutez et organisez votre bibliothèque musicale
+Exec=cosmic-advanced-player %U
+Icon=io.github.kisakay.CosmicAdvancedPlayer
+Terminal=false
+Type=Application
+StartupNotify=true
+StartupWMClass=io.github.kisakay.CosmicAdvancedPlayer
+Categories=AudioVideo;Audio;Player;Music;COSMIC;
+Keywords=music;audio;player;lyrics;lastfm;flac;mp3;
+MimeType=inode/directory;audio/flac;audio/x-flac;audio/mpeg;audio/mp3;audio/ogg;audio/x-vorbis+ogg;audio/opus;audio/x-opus+ogg;audio/wav;audio/x-wav;audio/aac;audio/mp4;audio/x-m4a;audio/x-aiff;audio/x-wavpack;
